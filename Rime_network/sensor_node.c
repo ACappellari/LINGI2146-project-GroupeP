@@ -60,27 +60,16 @@ static struct broadcast_conn broadcast_conn;
 /* HELPER FUNCTIONS */
 /* ---------------- */
 
-/*
-* @Def: this function is used to transmit the data that come from an other node (down) to an upper one (towards the root)
-* @Param: - char * data_payload: the data to be relayed (string representation)
-*/
-static void
-relay_data(char * data_payload)
-{
-    printf("MSG TO RELAY : %s\n", data_payload);
-    /* Waits the connection */
-    while(runicast_is_transmitting(&data_conn)) {}
-    /* Create the data packet */
-    int length = strlen(data_payload);
-    char * buf = [length+16];
-    snprintf(buf, sizeof(buf), "%s", data_payload);
-    printf("DATA CONTAINED : %s\n", buf);
-    packetbuf_copyfrom(&buf, strlen(buf));
-    /* Send the packet */
-    runicast_send(&data_conn, &parent.addr, MAX_RETRANSMISSIONS);
-    /* Free the packetbuf content */
+// @Def: Generic function to send a certain payload to a certain address through a given connection
+static void send_packet(runicast_conn *c, char *payload, int length, *linkaddr_t to){
+
+    while(runicast_is_transmitting(c)) {}
+    int length=strlen(payload);
+    char *buffer = [length];
+    snprintf(buffer, sizeof(buffer), "%s", payload);
+    packetbuf_copyfrom(&buffer, strlen(buffer));
+    runicast_send(c, to, MAX_RETRANSMISSIONS);
     packetbuf_clear();
-    printf("DATA SENDT");
 
 }
 
@@ -175,7 +164,7 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
 		    parent.addr.u8[1] = from->u8[1];		
 		    parent.dist_root = dist_root;
 			me.dist_root = dist_root + 1;
-			send_child_confirmation();      // Warn him by sending ROUTING_NEWCHILD
+            send_packet(&routing_conn, ROUTING_NEWCHILD, 16, &parent.addr); // Warn him by sending ROUTING_NEWCHILD
         }
 
     }
@@ -232,7 +221,10 @@ options_recv_runicast(struct runicast_conn *c, const rimeaddr_t *from, uint8_t s
 	uint8_t opt = (uint8_t) atoi(opt_payload);
 	if(opt == 0 || opt == 1 || opt == 2){
 		option = opt;
-		relay_options(opt_payload);
+        int j;
+	    for(j = 0; j < number_children; j++) {
+            send_packet(&options_conn, opt_payload, strlen(payload), &children[j].addr)
+	    }
 	}
     else {printf("Asked option doesn't exist")}
 }
@@ -289,7 +281,8 @@ static void data_rcv_runicast(struct runicast_conn *c, const linkaddr_t *from, u
     /* Copy the data from the packetbuf */
     char * data_payload = (char *) packetbuf_dataptr();
     printf("DATA PACKET RECEIVED : %s\n", data_payload); //idem changé l'intitulé du msg
-    relay_data(data_payload);
+    send_packet(&data_conn, data_payload, strlen(payload)+16, &parent.addr)
+
 }
 
 /*
