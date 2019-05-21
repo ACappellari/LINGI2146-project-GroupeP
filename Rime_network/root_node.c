@@ -317,8 +317,15 @@ PROCESS_THREAD(root_node_process, ev, data)
 
     broadcast_open(&broadcast, 129, &broadcast_call);
 
+    uart0_init(BAUD2UBR(115200)); //set the baud rate as necessary 
+  	uart0_set_input(uart_rx_callback); //set the callback function for serial input
 
-
+	for(;;){
+		PROCESS_WAIT_EVENT();
+		if(ev == serial_line_event_message){ // Still looking for input in the command lines
+			printf("Serial message read\n");
+		}
+	}
 
     PROCESS_END();
 }
