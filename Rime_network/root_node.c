@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include "contiki.h"
 #include "contiki-net.h"
-#include "net/rime.h"
+#include "net/rime/rime.h"
 #include "random.h"
 #include "lib/list.h"
 #include "lib/memb.h"
@@ -10,12 +10,14 @@
 #include "dev/leds.h"
 #include "dev/serial-line.h"
 #include <stdio.h>
+#include "net/rime/runicast.h"
 
 /* CONSTANTS */
-#define ROUTING_NEWCHILD = 50;
+#define ROUTING_NEWCHILD 50
 #define MAX_RETRANSMISSIONS 16
 #define MAX_DISTANCE infinity() //a voir si ça fonctionne
 #define SERIAL_BUF_SIZE 128 //Size of the communication buffer with the gateway
+#define MAX_CHILDREN 15
 
 /* STRUCTURES */
 /* ---------- */
@@ -42,8 +44,6 @@ node this;
 child children[MAX_CHILDREN];
 static uint8_t children_numb = 0;
 
-
-
 /* CONNECTIONS */
 /* ----------- */
 
@@ -59,7 +59,7 @@ static struct broadcast_conn broadcast_conn;
 /* ---------------- */
 
 // @Def: Generic function to send a certain payload to a certain address through a given connection
-static void send_packet(runicast_conn *c, char *payload, int length, *linkaddr_t to){
+static void send_packet(runicast_conn *c, char *payload, int length, linkaddr_t *to){
 
     while(runicast_is_transmitting(c)) {}
     int length=strlen(payload);
@@ -80,7 +80,7 @@ check_children(child x){
 	int isIn = 0; // return 0 if not in the children list
 	int i;
 	for(i = 0; i < children_numb; i++) {
-		if(children[i].addr.u8[0] == t.addr.u8[0] && children[i].addr.u8[1] == x.addr.u8[1]){
+		if(children[i].addr.u8[0] == x.addr.u8[0] && children[i].addr.u8[1] == x.addr.u8[1]){
 			return i; // return >0 if it is in the children list
 		}
 	}

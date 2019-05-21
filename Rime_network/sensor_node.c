@@ -1,5 +1,5 @@
 #include "contiki.h"
-#include "net/rime.h"
+#include "net/rime/rime.h"
 #include "random.h"
 #include "lib/list.h"
 #include "lib/memb.h"
@@ -8,13 +8,15 @@
 #include "adxl345.h"    // Accelerometer sensor
 #include "tmp102.h"     // Temperature sensor
 #include "dev/i2cmaster.h"
+#include "net/rime/runicast.h"
 
 
 /* CONSTANTS */
 /* --------- */
-#define ROUTING_NEWCHILD = 50;
+#define ROUTING_NEWCHILD 50
 #define MAX_RETRANSMISSIONS 16
 #define MAX_DISTANCE infinity() //a voir si ça fonctionne
+#define MAX_CHILDREN 15
 
 /* STRUCTURES */
 /* ---------- */
@@ -58,7 +60,7 @@ static struct broadcast_conn broadcast_conn;
 /* ---------------- */
 
 // @Def: Generic function to send a certain payload to a certain address through a given connection
-static void send_packet(runicast_conn *c, char *payload, int length, *linkaddr_t to){
+static void send_packet(runicast_conn *c, char *payload, int length, linkaddr_t *to){
 
     while(runicast_is_transmitting(c)) {}
     int length=strlen(payload);
