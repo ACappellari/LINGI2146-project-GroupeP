@@ -238,3 +238,46 @@ static void data_rcv_runicast(struct runicast_conn *c, const linkaddr_t *from, u
 
 }
 
+/* CALLBACKS SETTINGS */
+/* ------------------ */
+// runicast_callbacks structures contain the function to execute when:
+//      - A message has been received
+//      - A message has been sent
+//      - A message sent has timedout
+
+static const struct broadcast_callbacks broadcast_callbacks = {routing_recv_broadcast};
+static const struct runicast_callbacks routing_callbacks = {routing_recv_runicast, routing_sent_runicast, routing_timedout_runicast};
+static const struct runicast_callbacks data_runicast_callbacks = {data_recv_runicast};
+static const struct runicast_callbacks options_runicast_callbacks = {options_sent_runicast, options_timedout_runicast};
+
+/*---------------------------------------------------------------------------*/
+PROCESS(root_node_process, "Root node implementation");
+AUTOSTART_PROCESSES(&root_node_process);
+/*---------------------------------------------------------------------------*/
+
+/* PROCESS THREAD */
+
+PROCESS_THREAD(root_node_process, ev, data)
+{
+	
+	PROCESS_EXITHANDLER(broadcast_close(&broadcast);)
+	PROCESS_EXITHANDLER(runicast_close(&runicast);)
+	PROCESS_EXITHANDLER(runicast_close(&sensor_runicast);)
+	PROCESS_EXITHANDLER(runicast_close(&options_runicast);)
+	PROCESS_BEGIN();
+
+    this.addr.u8[0] = rimeaddr_node_addr.u8[0];
+	this.addr.u8[1] = rimeaddr_node_addr.u8[1];
+	this.dist_root = 0;
+
+    runicast_open(&routing, 144, &routing_callbacks);
+	runicast_open(&data_runicast, 154, &sdata_runicast_callbacks);
+	runicast_open(&options_runicast, 164, &options_runicast_callbacks);
+
+    broadcast_open(&broadcast, 129, &broadcast_call);
+
+
+
+
+    PROCESS_END();
+}
