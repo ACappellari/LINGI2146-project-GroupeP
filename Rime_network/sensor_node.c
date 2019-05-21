@@ -316,7 +316,7 @@ static void data_timedout_runicast(struct runicsast_conn *c, const linkaddr_t *t
 //      - A message sent has timedout
 
 static const struct broadcast_callbacks broadcast_callbacks = {routing_recv_broadcast};
-static const struct runicast_callbacks routing_callbacks = {routing_recv_runicast, routing_sent_runicast, routing_timedout_runicast};
+static const struct runicast_callbacks routing_runicast_callbacks = {routing_recv_runicast, routing_sent_runicast, routing_timedout_runicast};
 static const struct runicast_callbacks data_runicast_callbacks = {data_recv_runicast, data_sent_runicast, data_timedout_runicast};
 static const struct runicast_callbacks options_runicast_callbacks = {options_recv_runicast, options_sent_runicast, options_timedout_runicast};
 

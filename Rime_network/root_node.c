@@ -287,7 +287,7 @@ static void uart_rx_callback(unsigned char c) {
 //      - A message sent has timedout
 
 static const struct broadcast_callbacks broadcast_callbacks = {routing_recv_broadcast};
-static const struct runicast_callbacks routing_callbacks = {routing_recv_runicast, routing_sent_runicast, routing_timedout_runicast};
+static const struct runicast_callbacks routing_runicast_callbacks = {routing_recv_runicast, routing_sent_runicast, routing_timedout_runicast};
 static const struct runicast_callbacks data_runicast_callbacks = {data_recv_runicast};
 static const struct runicast_callbacks options_runicast_callbacks = {options_sent_runicast, options_timedout_runicast};
 
@@ -300,22 +300,24 @@ AUTOSTART_PROCESSES(&root_node_process);
 
 PROCESS_THREAD(root_node_process, ev, data)
 {
-	
-	PROCESS_EXITHANDLER(broadcast_close(&broadcast);)
-	PROCESS_EXITHANDLER(runicast_close(&runicast);)
-	PROCESS_EXITHANDLER(runicast_close(&sensor_runicast);)
-	PROCESS_EXITHANDLER(runicast_close(&options_runicast);)
+	// Close all connections
+	PROCESS_EXITHANDLER(broadcast_close(&broadcast_conn);)
+	PROCESS_EXITHANDLER(runicast_close(&routing_conn);)
+	PROCESS_EXITHANDLER(runicast_close(&data_conn);)
+	PROCESS_EXITHANDLER(runicast_close(&options_conn);)
+
+    // Begin process
 	PROCESS_BEGIN();
 
     this.addr.u8[0] = rimeaddr_node_addr.u8[0];
 	this.addr.u8[1] = rimeaddr_node_addr.u8[1];
 	this.dist_root = 0;
 
-    runicast_open(&routing, 144, &routing_callbacks);
-	runicast_open(&data_runicast, 154, &sdata_runicast_callbacks);
-	runicast_open(&options_runicast, 164, &options_runicast_callbacks);
-
-    broadcast_open(&broadcast, 129, &broadcast_call);
+    // Open channels
+    runicast_open(&routing_conn, 144, &routing_runicast_callbacks);
+	runicast_open(&data_conn, 154, &sdata_runicast_callbacks);
+	runicast_open(&options_conn, 164, &options_runicast_callbacks);
+    broadcast_open(&broadcast_conn, 129, &broadcast_callbacks);
 
     uart0_init(BAUD2UBR(115200)); //set the baud rate as necessary 
   	uart0_set_input(uart_rx_callback); //set the callback function for serial input
