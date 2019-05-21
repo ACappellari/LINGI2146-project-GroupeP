@@ -10,7 +10,6 @@
 #include "dev/button-sensor.h"
 #include "dev/leds.h"
 #include "dev/serial-line.h"
-#include "net/rime/runicast.h"
 #include "math.h"
 
 /* CONSTANTS */
@@ -62,11 +61,10 @@ static struct broadcast_conn broadcast_conn;
 /* ---------------- */
 
 // @Def: Generic function to send a certain payload to a certain address through a given connection
-static void send_packet(runicast_conn *c, char *payload, int length, linkaddr_t * to){
+static void send_packet(struct runicast_conn *c, char *payload, int length, linkaddr_t * to){
 
     while(runicast_is_transmitting(c)) {}
-    int length=strlen(payload);
-    char *buffer = [length];
+    char buffer[length];
     snprintf(buffer, sizeof(buffer), "%s", payload);
     packetbuf_copyfrom(&buffer, strlen(buffer));
     runicast_send(c, to, MAX_RETRANSMISSIONS);
@@ -128,7 +126,7 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
 	uint8_t pl = (uint8_t) atoi(payload);
 
     // Upon ROUTING_NEWCHILD reception:
-    if(pl = ROUTING_NEWCHILD) {
+    if(pl == ROUTING_NEWCHILD) {
         // If children list not full
         if(children_numb < MAX_CHILDREN){
 			child testChild;
@@ -167,7 +165,7 @@ routing_timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t
 
 
 	//If the node lost is a child node: 
-	else if(isChild > 0){
+	if(isChild > 0){
 		delete_child(isChild); 
 	}
 	else{
@@ -185,7 +183,7 @@ routing_timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t
 *         -*to: address to which the option packet has been sent
 *         - retransmissions: number of the option packet's retransmissions 
 */
-options_sent_runicast(struct runicast_conn *c, const rimeaddr_t *to, uint8_t retransmissions)
+static void options_sent_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
 {
   printf("Option packet sent to %d.%d, retransmissions %d\n", to->u8[0], to->u8[1], retransmissions);
 }
@@ -196,7 +194,7 @@ options_sent_runicast(struct runicast_conn *c, const rimeaddr_t *to, uint8_t ret
 *         -*to: address to which the option packet transmission failed (timed out) 
 *         - transmissions: number of the option packet's retransmissions 
 */
-options_timedout_runicast(struct runicast_conn *c, const rimeaddr_t *to, uint8_t retransmissions)
+static void options_timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
 {
   	printf("Option packet timed out when sending to %d.%d, retransmissions %d\n ", to->u8[0], to->u8[1], retransmissions);
 	
@@ -223,14 +221,13 @@ options_timedout_runicast(struct runicast_conn *c, const rimeaddr_t *to, uint8_t
 *         -*from: address from which the data packet has been received
 *         - seqno: the sequence number of the data packet received
 */
-static void data_rcv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
+static void data_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
 {
-    printf("Msg received on data_conn from %d.%d, seqno %d\n", from->u8[0], from->u8[1], seqno); //changé l'intitulé du message 'msg rcvd on data_conn' au lieu de 'runicast msg'
+    printf("Root received data on data_conn from %d.%d, seqno %d\n", from->u8[0], from->u8[1], seqno); 
+
+  char * data_payload = (char *) packetbuf_dataptr();
+  printf("%s\n", data_payload); //data recvd on the root
     
-    /* Copy the data from the packetbuf */
-    char * data_payload = (char *) packetbuf_dataptr();
-    printf("DATA PACKET RECEIVED : %s\n", data_payload); //idem changé l'intitulé du msg
-    send_packet(&data_conn, data_payload, strlen(payload)+16, &parent.addr)
 
 }
 
@@ -243,34 +240,31 @@ static int serial_buf_index;
 * @Def: Callback function for the serial communication (given as argument to uart0_set_input)
 * @Param: an unsigned char c (input of the terminal) - if c corresponds to an option, this last will be stored in serial_buf
 */
-static void uart_rx_callback(unsigned char c) { 
-	if(c != '\n'){
+static void uart_serial_callback(unsigned char c) { 
+  if(c != '\n'){
         if (c!=0 ||c!=2 || c!=2) 
         { 
-            printf("Error : you didn't enter a valid option, please enter 
-            \n 0: for stoping sending data
-            \n 1: for a periodically sending of data
-            \n 2: for sending data only when there are some news");
+            printf("Error : you didn't enter a valid option, please enter \n 0: for stoping sending data \n 1: for a periodically sending of data \n 2: for sending data only when there are some news");
         }
         else {
-            rx_buf[rx_buf_index] = c; // c corresponds to an option
-        }
-	}  
+            serial_buf[serial_buf_index] = c; // c corresponds to an option
+  	}
+  }  
   if(c == '\n' || c == EOF || c == '\0'){ 
-   printf("%s\n", (char *)rx_buf);
+   printf("%s\n", (char *)serial_buf);
    packetbuf_clear();
-   rx_buf[strcspn ( rx_buf, "\n" )] = '\0';
-   packetbuf_copyfrom(rx_buf, strlen(rx_buf));
+   serial_buf[strcspn ( serial_buf, "\n" )] = '\0';
+   packetbuf_copyfrom(serial_buf, strlen(serial_buf));
    //Send the option to all the child nodes
    int j;
    for(j = 0; j < children_numb; j++) {
-		runicast_send(&options_runicast, &children[j].addr, MAX_RETRANSMISSIONS);
+		runicast_send(&options_conn, &children[j].addr, MAX_RETRANSMISSIONS);
    }
 
-   memset(rx_buf, 0, rx_buf_index); 
-   rx_buf_index = 0; 
+   memset(serial_buf, 0, serial_buf_index); 
+   serial_buf_index = 0; 
   }else{ 
-    rx_buf_index = rx_buf_index + 1; 
+    serial_buf_index = serial_buf_index + 1; 
   } 
 }
 
@@ -304,18 +298,18 @@ PROCESS_THREAD(root_node_process, ev, data)
     // Begin process
 	PROCESS_BEGIN();
 
-    this.addr.u8[0] = rimeaddr_node_addr.u8[0];
-	this.addr.u8[1] = rimeaddr_node_addr.u8[1];
+    this.addr.u8[0] = linkaddr_node_addr.u8[0];
+	this.addr.u8[1] = linkaddr_node_addr.u8[1];
 	this.dist_root = 0;
 
     // Open channels
     runicast_open(&routing_conn, 144, &routing_runicast_callbacks);
-	runicast_open(&data_conn, 154, &sdata_runicast_callbacks);
-	runicast_open(&options_conn, 164, &options_runicast_callbacks);
+    runicast_open(&data_conn, 154, &data_runicast_callbacks);
+    runicast_open(&options_conn, 164, &options_runicast_callbacks);
     broadcast_open(&broadcast_conn, 129, &broadcast_callbacks);
 
     uart0_init(BAUD2UBR(115200)); //set the baud rate as necessary 
-  	uart0_set_input(uart_rx_callback); //set the callback function for serial input
+  	uart0_set_input(uart_serial_callback); //set the callback function for serial input
 
 	for(;;){
 		PROCESS_WAIT_EVENT();
