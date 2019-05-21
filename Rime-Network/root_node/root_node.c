@@ -1,7 +1,8 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include "contiki.h"
 #include "contiki-net.h"
-#include "net/rime.h"
+#include "net/rime/rime.h"
 #include "random.h"
 #include "lib/list.h"
 #include "lib/memb.h"
@@ -9,13 +10,14 @@
 #include "dev/button-sensor.h"
 #include "dev/leds.h"
 #include "dev/serial-line.h"
-#include <stdio.h>
+#include "net/rime/runicast.h"
 
 /* CONSTANTS */
-#define ROUTING_NEWCHILD = 50;
+#define ROUTING_NEWCHILD  50
 #define MAX_RETRANSMISSIONS 16
 #define MAX_DISTANCE infinity() //a voir si ça fonctionne
 #define SERIAL_BUF_SIZE 128 //Size of the communication buffer with the gateway
+#define MAX_CHILDREN 15
 
 /* STRUCTURES */
 /* ---------- */
@@ -48,9 +50,9 @@ static uint8_t children_numb = 0;
 /* ----------- */
 
 // Single-hop reliable connections
-const struct runicast_conn routing_conn;
-const struct runicast_conn data_conn;
-const struct runicast_conn options_conn;
+static struct runicast_conn routing_conn;
+static struct runicast_conn data_conn;
+static struct runicast_conn options_conn;
 
 // Best effort local area broadcast connection
 static struct broadcast_conn broadcast_conn;
@@ -59,7 +61,7 @@ static struct broadcast_conn broadcast_conn;
 /* ---------------- */
 
 // @Def: Generic function to send a certain payload to a certain address through a given connection
-static void send_packet(runicast_conn *c, char *payload, int length, *linkaddr_t to){
+static void send_packet(runicast_conn *c, char *payload, int length, linkaddr_t * to){
 
     while(runicast_is_transmitting(c)) {}
     int length=strlen(payload);
@@ -80,7 +82,7 @@ check_children(child x){
 	int isIn = 0; // return 0 if not in the children list
 	int i;
 	for(i = 0; i < children_numb; i++) {
-		if(children[i].addr.u8[0] == t.addr.u8[0] && children[i].addr.u8[1] == x.addr.u8[1]){
+		if(children[i].addr.u8[0] == x.addr.u8[0] && children[i].addr.u8[1] == x.addr.u8[1]){
 			return i; // return >0 if it is in the children list
 		}
 	}
@@ -108,16 +110,12 @@ void delete_child(int index)
 static void
 routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 {
+	printf("I A M ROOT, broadcast message received from %d.%d: '%s'\n",
+	from->u8[0], from->u8[1], (char *)packetbuf_dataptr());
 
-	// If already connected to root
-	if(parent.addr.u8[0] != 0){
-		while(runicast_is_transmitting(&runicast)){}
-		packetbuf_clear();
-		char *dist_root;
-		sprintf(dist_root, "%d", me.dist_root);
-		packetbuf_copyfrom(dist_root, sizeof(dist_root));
-		runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);  // answer ROUTING_ANS_DIST
-	}
+	packetbuf_copyfrom("0", 1);
+	runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);
+
 }
 
 /* UNICAST ROUTING MESSAGES */
@@ -132,7 +130,7 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
     if(pl = ROUTING_NEWCHILD) {
         // If children list not full
         if(children_numb < MAX_CHILDREN){
-			tuple_child testChild;
+			child testChild;
 			testChild.addr.u8[0] = from->u8[0];
 			testChild.addr.u8[1] = from->u8[1];
 			if(check_children(testChild) == 0){        // If children isn't already in children list
@@ -147,7 +145,7 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
     }
     // Upon ROUTING_ANS_DIST reception:
     else {
-        printf("Error: unknown unicast message type on routing connection \n")
+        printf("Error: unknown unicast message type on routing connection \n");
     }
 }
 
@@ -166,11 +164,7 @@ routing_timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t
 	testChild.addr.u8[1] = to->u8[1];
 	int isChild = check_children(testChild);    // Is the lost node a children?
 
-	// If the node lost is the parent:
-	if(temp.addr.u8[0] == parent.addr.u8[0] && temp.addr.u8[1] == parent.addr.u8[1]){
-		parent.addr.u8[0] = 0;
-		parent.dist_root = MAX_DISTANCE;       
-	}
+
 	//If the node lost is a child node: 
 	else if(isChild > 0){
 		delete_child(isChild); 

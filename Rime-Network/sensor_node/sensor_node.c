@@ -8,7 +8,7 @@
 #include "adxl345.h"    // Accelerometer sensor
 #include "tmp102.h"     // Temperature sensor
 #include "dev/i2cmaster.h"
-
+#include "net/rime/runicast.h"
 
 /* CONSTANTS */
 /* --------- */
@@ -47,9 +47,9 @@ data data;
 /* ----------- */
 
 // Single-hop reliable connections
-const struct runicast_conn routing_conn;
-const struct runicast_conn data_conn;
-const struct runicast_conn options_conn;
+static struct runicast_conn routing_conn;
+static struct runicast_conn data_conn;
+static struct runicast_conn options_conn;
 
 // Best effort local area broadcast connection
 static struct broadcast_conn broadcast_conn;
@@ -58,7 +58,7 @@ static struct broadcast_conn broadcast_conn;
 /* ---------------- */
 
 // @Def: Generic function to send a certain payload to a certain address through a given connection
-static void send_packet(runicast_conn *c, char *payload, int length, *linkaddr_t to){
+static void send_packet(runicast_conn *c, char *payload, int length, linkaddr_t * to){
 
     while(runicast_is_transmitting(c)) {}
     int length=strlen(payload);
@@ -79,7 +79,7 @@ check_children(child x){
 	int isIn = 0; // return 0 if not in the children list
 	int i;
 	for(i = 0; i < children_numb; i++) {
-		if(children[i].addr.u8[0] == t.addr.u8[0] && children[i].addr.u8[1] == x.addr.u8[1]){
+		if(children[i].addr.u8[0] == x.addr.u8[0] && children[i].addr.u8[1] == x.addr.u8[1]){
 			return i; // return >0 if it is in the children list
 		}
 	}
@@ -133,7 +133,7 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
     if(pl = ROUTING_NEWCHILD) {
         // If children list not full
         if(children_numb < MAX_CHILDREN){
-			tuple_child testChild;
+			child testChild;
 			testChild.addr.u8[0] = from->u8[0];
 			testChild.addr.u8[1] = from->u8[1];
 			if(check_children(testChild) == 0){        // If children isn't already in children list
