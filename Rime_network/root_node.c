@@ -15,6 +15,7 @@
 #define ROUTING_NEWCHILD = 50;
 #define MAX_RETRANSMISSIONS 16
 #define MAX_DISTANCE infinity() //a voir si ça fonctionne
+#define SERIAL_BUF_SIZE 128 //Size of the communication buffer with the gateway
 
 /* STRUCTURES */
 /* ---------- */
@@ -236,6 +237,46 @@ static void data_rcv_runicast(struct runicast_conn *c, const linkaddr_t *from, u
     printf("DATA PACKET RECEIVED : %s\n", data_payload); //idem changé l'intitulé du msg
     send_packet(&data_conn, data_payload, strlen(payload)+16, &parent.addr)
 
+}
+
+/* SERIAL COMMUNICATION */
+/* -------------------- */
+static char serial_buf[SERIAL_BUF_SIZE]; //keep the options given in the command line interface of the gateway
+static int serial_buf_index;
+
+/*
+* @Def: Callback function for the serial communication (given as argument to uart0_set_input)
+* @Param: an unsigned char c (input of the terminal) - if c corresponds to an option, this last will be stored in serial_buf
+*/
+static void uart_rx_callback(unsigned char c) { 
+	if(c != '\n'){
+        if (c!=0 ||c!=2 || c!=2) 
+        { 
+            printf("Error : you didn't enter a valid option, please enter 
+            \n 0: for stoping sending data
+            \n 1: for a periodically sending of data
+            \n 2: for sending data only when there are some news");
+        }
+        else {
+            rx_buf[rx_buf_index] = c; // c corresponds to an option
+        }
+	}  
+  if(c == '\n' || c == EOF || c == '\0'){ 
+   printf("%s\n", (char *)rx_buf);
+   packetbuf_clear();
+   rx_buf[strcspn ( rx_buf, "\n" )] = '\0';
+   packetbuf_copyfrom(rx_buf, strlen(rx_buf));
+   //Send the option to all the child nodes
+   int j;
+   for(j = 0; j < children_numb; j++) {
+		runicast_send(&options_runicast, &children[j].addr, MAX_RETRANSMISSIONS);
+   }
+
+   memset(rx_buf, 0, rx_buf_index); 
+   rx_buf_index = 0; 
+  }else{ 
+    rx_buf_index = rx_buf_index + 1; 
+  } 
 }
 
 /* CALLBACKS SETTINGS */
