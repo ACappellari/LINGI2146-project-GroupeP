@@ -9,7 +9,9 @@
 #include "dev/i2cmaster.h"
 #include "dev/light-ziglet.h"
 
+
 /* CONSTANTS */
+/* --------- */
 #define ROUTING_NEWCHILD = 50;
 #define MAX_RETRANSMISSIONS 16
 #define MAX_DISTANCE infinity() //a voir si ça fonctionne
