@@ -402,4 +402,3 @@ PROCESS_THREAD(sensor_node_process, ev, data)
     goto HELLO;
     PROCESS_END(); 
 }
-

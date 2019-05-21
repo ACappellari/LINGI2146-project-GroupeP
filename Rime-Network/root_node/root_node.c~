@@ -19,6 +19,12 @@
 #define SERIAL_BUF_SIZE 128 //Size of the communication buffer with the gateway
 #define MAX_CHILDREN 15
 
+/*---------------------------------------------------------------------------*/
+PROCESS(root_node_process, "Root node implementation");
+AUTOSTART_PROCESSES(&root_node_process);
+/*---------------------------------------------------------------------------*/
+
+
 /* STRUCTURES */
 /* ---------- */
 struct sensor_node;
@@ -280,10 +286,6 @@ static const struct runicast_callbacks routing_runicast_callbacks = {routing_rec
 static const struct runicast_callbacks data_runicast_callbacks = {data_recv_runicast};
 static const struct runicast_callbacks options_runicast_callbacks = {options_sent_runicast, options_timedout_runicast};
 
-/*---------------------------------------------------------------------------*/
-PROCESS(root_node_process, "Root node implementation");
-AUTOSTART_PROCESSES(&root_node_process);
-/*---------------------------------------------------------------------------*/
 
 /* PROCESS THREAD */
 
