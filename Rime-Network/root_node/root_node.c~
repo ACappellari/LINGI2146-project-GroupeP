@@ -145,7 +145,7 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
     }
     // Upon ROUTING_ANS_DIST reception:
     else {
-        printf("Error: unknown unicast message type on routing connection \n")
+        printf("Error: unknown unicast message type on routing connection \n");
     }
 }
 
@@ -164,11 +164,7 @@ routing_timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t
 	testChild.addr.u8[1] = to->u8[1];
 	int isChild = check_children(testChild);    // Is the lost node a children?
 
-	// If the node lost is the parent:
-	if(temp.addr.u8[0] == parent.addr.u8[0] && temp.addr.u8[1] == parent.addr.u8[1]){
-		parent.addr.u8[0] = 0;
-		parent.dist_root = MAX_DISTANCE;       
-	}
+
 	//If the node lost is a child node: 
 	else if(isChild > 0){
 		delete_child(isChild); 

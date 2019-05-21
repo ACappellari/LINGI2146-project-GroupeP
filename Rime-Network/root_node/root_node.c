@@ -11,6 +11,7 @@
 #include "dev/leds.h"
 #include "dev/serial-line.h"
 #include "net/rime/runicast.h"
+#include "math.h"
 
 /* CONSTANTS */
 #define ROUTING_NEWCHILD  50
