@@ -5,9 +5,9 @@
 #include "lib/memb.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include "dev/sht11.h"
+#include "adxl345.h"    // Accelerometer sensor
+#include "tmp102.h"     // Temperature sensor
 #include "dev/i2cmaster.h"
-#include "dev/light-ziglet.h"
 
 
 /* CONSTANTS */
@@ -26,8 +26,7 @@ typedef struct sensor_node{
 
 struct sensor_data;
 typedef struct sensor_data{
-	uint16_t val;
-	char* type;         // Temperature or accelerometer data
+	char val[32];
 } data;
 
 struct child_node;
@@ -42,11 +41,7 @@ node this;
 child children[MAX_CHILDREN];
 static uint8_t children_numb = 0;
 static uint8_t option = 0;
-
-// Initialization
-static parent.addr.u8[0] = 0;
-static parent.addr.u8[1] = 0;
-static parent.dist_root = MAX_DISTANCE;
+data data;
 
 /* CONNECTIONS */
 /* ----------- */
@@ -119,7 +114,7 @@ routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 		while(runicast_is_transmitting(&runicast)){}
 		packetbuf_clear();
 		char *dist_root;
-		sprintf(dist_root, "%d", me.dist_root);
+		sprintf(dist_root, "%d", this.dist_root);
 		packetbuf_copyfrom(dist_root, sizeof(dist_root));
 		runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);  // answer ROUTING_ANS_DIST
 	}
@@ -332,11 +327,72 @@ AUTOSTART_PROCESSES(&sensor_node_process);
 
 PROCESS_THREAD(sensor_network_process, ev, data)
 {
-    // Send ROUTING_HELLO to all node within reach
-    while(parent.addr.u8[0] != 0) {
+    // Close all connections
+	PROCESS_EXITHANDLER(broadcast_close(&broadcast_conn);)
+	PROCESS_EXITHANDLER(runicast_close(&routing_conn);)
+	PROCESS_EXITHANDLER(runicast_close(&data_conn);)
+	PROCESS_EXITHANDLER(runicast_close(&options_conn);)
+
+    // Begin process
+	PROCESS_BEGIN();
+
+    // Initializes sensors
+    tmp102_init();
+    accm_init();
+
+    // Initially not raccorded to root
+    static parent.addr.u8[0] = 0;
+    static parent.addr.u8[1] = 0;
+    static parent.dist_root = MAX_DISTANCE;
+
+    // Get own address
+    this.addr.u8[0] = linkaddr_node_addr.u8[0];
+	this.addr.u8[1] = linkaddr_node_addr.u8[1];
+
+    // Open channels
+	runicast_open(&routing_conn, 144, &routing_runicast_callbacks);                 // Unicast routing channel
+	runicast_open(&data_conn, 154, &data_runicast_callbacks);                       // Data channel
+	runicast_open(&options_conn, 164, &options_runicast_callbacks);                 // Options channel
+	broadcast_open(&broadcast_conn, 129, &broadcast_callbacks);                     // Broadcast routing channel
+
+    // Timers
+    static struct etimer HELLO_timer;
+    static struct etimer DATA_timer;
+
+    // Send ROUTING_HELLO to all node within reach, at random HELLO_timer intervals
+    HELLO: while(parent.addr.u8[0] != 0) {
+        // Delay between two HELLO send
+        etimer_set(&HELLO_timer, CLOCK_SECOND * 8 + random_rand() % (CLOCK_SECOND * 16));
+		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&HELLO_timer));
+
         broadcast_send(&broadcast_conn);
     }
+    
+    // Don't send data
+    if(option==0){
+        // Do nothing
+    }
+    // Send data periodically
+    else if (option==1){
+        int16_t acc = accm_read_axis(0);
+        int8_t temp = tmp102_read_temp_simple();
+        val = ((uint32_t) acc << 16 || (temp & (uint32_t) 0xFF));
+        sprintf(data.val, "%u", val);
+        send_packet(&data_conn, data.val, length(data)+16, &parent.addr);
+    }
+    // Send data if change
+    else if (option==2){
+        int16_t acc = accm_read_axis(0);
+        int8_t temp = tmp102_read_temp_simple();
+        uint32_t testVal = ((uint32_t) acc << 16 || (temp & (uint32_t) 0xFF));
+        
+        if (data.val!=testVal){
+            sprintf(data.val, "%u", testVal);
+            send_packet(&data_conn, data.val, length(data)+16, &parent.addr);
+        }
+    }
 
+    goto HELLO;
     
 }
 
