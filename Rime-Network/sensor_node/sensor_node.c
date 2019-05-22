@@ -28,7 +28,7 @@ typedef struct sensor_node{
 
 struct sensor_data;
 typedef struct sensor_data{
-	uint32_t val
+	uint32_t val;
 } data;
 
 struct child_node;
@@ -58,26 +58,6 @@ struct broadcast_conn broadcast_conn;
 
 /* HELPER FUNCTIONS */
 /* ---------------- */
-
-// @Def: Generic function to send a certain payload to a certain address through a given connection
-// format: 0 = %d, 1=%s
-/*
-static void send_packet(struct runicast_conn *c, void *payload, int length, int format, linkaddr_t *to){
-
-    while(runicast_is_transmitting(c)) {}
-    char buffer[length];
-    if (format==0) {
-        snprintf(buffer, sizeof(buffer), "%d", payload);
-    }
-    else if (format==1) {
-        snprintf(buffer, sizeof(buffer), "%s", payload);
-    }
-    packetbuf_copyfrom(&buffer, strlen(buffer));
-    runicast_send(c, to, MAX_RETRANSMISSIONS);
-    packetbuf_clear();
-
-}
-*/
 
 /*
  * @Def : Function used to check that a given node is not already in the children list of the node.
@@ -113,12 +93,11 @@ static void send_data()
 {
     while(runicast_is_transmitting(&data_conn)){}
     packetbuf_clear();
-    int len = strlen(dat.val);
-    char buffer[len + 16];
-    snprintf(buffer, sizeof(buffer), "%d", dat.val);
+    char buffer[32];
+    snprintf(buffer, sizeof(buffer), "%lu", (unsigned long) dat.val);
     packetbuf_copyfrom(&buffer, strlen(buffer));
     runicast_send(&data_conn, &parent.addr, MAX_RETRANSMISSIONS);
-	packetbuf_clear();
+    packetbuf_clear();
 }
 
 static void transfer_data(char* payload)
@@ -126,7 +105,7 @@ static void transfer_data(char* payload)
 	while(runicast_is_transmitting(&data_conn)){}
 	packetbuf_clear();                             
 	int len = strlen(payload);
-	char buffer[len+16];                              
+	char buffer[len];                              
 	snprintf(buffer, sizeof(buffer), "%s", payload);
 	packetbuf_copyfrom(&buffer, strlen(buffer));     
 	runicast_send(&data_conn, &parent.addr, MAX_RETRANSMISSIONS);  
@@ -282,7 +261,7 @@ static void options_recv_runicast(struct runicast_conn *c, const linkaddr_t *fro
 	uint8_t opt = (uint8_t) atoi(opt_payload);
 	if(opt == 0 || opt == 1 || opt == 2){
 		option = opt;
-        transfer_option();
+        transfer_option(opt_payload);
         printf("Transfered option %d\n",option);
 	}
     else {printf("Asked option doesn't exist");}
@@ -410,6 +389,7 @@ PROCESS_THREAD(sensor_node_process, ev, data)
     parent.addr.u8[0] = 0;
     parent.addr.u8[1] = 0;
     parent.dist_root = MAX_DISTANCE;
+    this.dist_root = MAX_DISTANCE;
 
     // Get own address
     this.addr.u8[0] = linkaddr_node_addr.u8[0];

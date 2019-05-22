@@ -10,12 +10,11 @@
 #include "dev/button-sensor.h"
 #include "dev/leds.h"
 #include "dev/serial-line.h"
-#include "math.h"
 
 /* CONSTANTS */
 #define ROUTING_NEWCHILD  50
 #define MAX_RETRANSMISSIONS 16
-#define MAX_DISTANCE infinity() //a voir si ça fonctionne
+#define MAX_DISTANCE 300 //a voir si ça fonctionne
 #define SERIAL_BUF_SIZE 128 //Size of the communication buffer with the gateway
 #define MAX_CHILDREN 15
 
@@ -100,6 +99,7 @@ routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 
 	packetbuf_copyfrom("0", 1);
 	runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);
+	printf("Sent ROUTIN_ANS_DIST (dist=0 bc I am root)\n");
 
 }
 
@@ -110,9 +110,11 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
 {
 	char * payload = (char *) packetbuf_dataptr();    
 	uint8_t pl = (uint8_t) atoi(payload);
+	printf("Received msg %d\n", pl);
 
     // Upon ROUTING_NEWCHILD reception:
     if(pl == ROUTING_NEWCHILD) {
+	printf("ROUTING_NEWCHILD received\n");
         // If children list not full
         if(children_numb < MAX_CHILDREN){
 			child testChild;
@@ -121,6 +123,7 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
 			if(check_children(testChild) == 0){        // If children isn't already in children list
 				children[children_numb] = testChild;   // Add the children
 				children_numb++;
+				printf("Added a new children!\n");
 			}
 		}
 		else{
@@ -306,4 +309,3 @@ PROCESS_THREAD(root_node_process, ev, data)
 
     PROCESS_END();
 }
-
