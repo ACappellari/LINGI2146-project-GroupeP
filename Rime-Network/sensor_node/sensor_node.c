@@ -428,18 +428,21 @@ PROCESS_THREAD(sensor_node_process, ev, data)
     }
     // Send data periodically
     else if (option==1){
-        int16_t acc = accm_read_axis(0);
-        int8_t temp = tmp102_read_temp_simple();
+        uint16_t acc = (uint16_t) rand(); //accm_read_axis(0);
+        printf("Accelerometer data (xaxis): %u\n", acc);
+        uint8_t temp = (uint8_t) rand(); //tmp102_read_temp_simple();
+        printf("Temperature data: %u\n", temp);
         dat.val = ((uint32_t) acc << 16 || (temp & (uint32_t) 0xFF));
         send_data();
         printf('Data sent \n');
     }
     // Send data if change
     else if (option==2){
-        int16_t acc = accm_read_axis(0);
-        int8_t temp = tmp102_read_temp_simple();
+        uint16_t acc = (uint16_t) rand(); //accm_read_axis(0);
+        uint8_t temp = (uint8_t) rand(); //tmp102_read_temp_simple();
         uint32_t testVal = ((uint32_t) acc << 16 || (temp & (uint32_t) 0xFF));
-        
+        printf("Accelerometer data (xaxis): %u\n", acc);
+        printf("Temperature data: %u\n", temp);
         if (dat.val!=testVal){
             printf("Data changed!\n");
             dat.val=testVal;
