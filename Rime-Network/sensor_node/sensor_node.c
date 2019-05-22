@@ -50,9 +50,9 @@ data dat;
 /* ----------- */
 
 // Single-hop reliable connections
-struct runicast_conn routing_conn;
-struct runicast_conn data_conn;
-struct runicast_conn options_conn;
+static struct runicast_conn routing_conn;
+static struct runicast_conn data_conn;
+static struct runicast_conn options_conn;
 
 // Best effort local area broadcast connection
 struct broadcast_conn broadcast_conn;
