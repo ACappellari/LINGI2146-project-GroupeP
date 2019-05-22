@@ -62,7 +62,7 @@ static struct broadcast_conn broadcast_conn;
 /* ---------------- */
 
 // @Def: Generic function to send a certain payload to a certain address through a given connection
-static void send_packet(runicast_conn *c, char *payload, int length, linkaddr_t * to){
+static void send_packet(struct runicast_conn *c, char *payload, int length, linkaddr_t * to){
 
     while(runicast_is_transmitting(c)) {}
     int length=strlen(payload);
