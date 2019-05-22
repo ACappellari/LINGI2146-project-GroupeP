@@ -11,10 +11,10 @@
 #include "dev/leds.h"
 #include "dev/serial-line.h"
 
+
 /* CONSTANTS */
 #define ROUTING_NEWCHILD  50
 #define MAX_RETRANSMISSIONS 16
-#define MAX_DISTANCE 300 //a voir si ça fonctionne
 #define SERIAL_BUF_SIZE 128 //Size of the communication buffer with the gateway
 #define MAX_CHILDREN 15
 
@@ -43,6 +43,8 @@ node this;
 child children[MAX_CHILDREN];
 static uint8_t children_numb = 0;
 
+
+
 /* CONNECTIONS */
 /* ----------- */
 
@@ -56,6 +58,18 @@ static struct broadcast_conn broadcast_conn;
 
 /* HELPER FUNCTIONS */
 /* ---------------- */
+
+// @Def: Generic function to send a certain payload to a certain address through a given connection
+static void send_packet(struct runicast_conn *c, char *payload, int length, linkaddr_t * to){
+
+    while(runicast_is_transmitting(c)) {}
+    char buffer[length];
+    snprintf(buffer, sizeof(buffer), "%s", payload);
+    packetbuf_copyfrom(&buffer, strlen(buffer));
+    runicast_send(c, to, MAX_RETRANSMISSIONS);
+    packetbuf_clear();
+
+}
 
 /*
  * @Def : Function used to check that a given node is not already in the children list of the node.
@@ -99,7 +113,6 @@ routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 
 	packetbuf_copyfrom("0", 1);
 	runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);
-	printf("Sent ROUTIN_ANS_DIST (dist=0 bc I am root)\n");
 
 }
 
@@ -110,11 +123,9 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
 {
 	char * payload = (char *) packetbuf_dataptr();    
 	uint8_t pl = (uint8_t) atoi(payload);
-	printf("Received msg %d\n", pl);
 
     // Upon ROUTING_NEWCHILD reception:
     if(pl == ROUTING_NEWCHILD) {
-	printf("ROUTING_NEWCHILD received\n");
         // If children list not full
         if(children_numb < MAX_CHILDREN){
 			child testChild;
@@ -123,7 +134,6 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
 			if(check_children(testChild) == 0){        // If children isn't already in children list
 				children[children_numb] = testChild;   // Add the children
 				children_numb++;
-				printf("Added a new children!\n");
 			}
 		}
 		else{
@@ -229,21 +239,27 @@ static int serial_buf_index;
 * @Def: Callback function for the serial communication (given as argument to uart0_set_input)
 * @Param: an unsigned char c (input of the terminal) - if c corresponds to an option, this last will be stored in serial_buf
 */
-static void uart_serial_callback(unsigned char c) { 
-  if(c != '\n'){
-        if (c!=0 ||c!=2 || c!=2) 
+static void uart_serial_callback(unsigned char * c) { 
+  if(c!= '\n'){
+        /*if (c!=0 ||c!=1 || c!=2) 
         { 
+		printf("%d\n",c);
             printf("Error : you didn't enter a valid option, please enter \n 0: for stoping sending data \n 1: for a periodically sending of data \n 2: for sending data only when there are some news");
         }
-        else {
-            serial_buf[serial_buf_index] = c; // c corresponds to an option
-  	}
+        else {*/
+            serial_buf[serial_buf_index] = c; 
+  	//}
   }  
   if(c == '\n' || c == EOF || c == '\0'){ 
-   printf("%s\n", (char *)serial_buf);
+   //printf("%s\n", (char *)serial_buf);
    packetbuf_clear();
    serial_buf[strcspn ( serial_buf, "\n" )] = '\0';
+	size_t l=strcspn(serial_buf, "\n");
+	printf("%u\n",l); //01
+	size_t stl=strlen(serial_buf);
+	printf("%u\n",stl); //1
    packetbuf_copyfrom(serial_buf, strlen(serial_buf));
+
    //Send the option to all the child nodes
    int j;
    for(j = 0; j < children_numb; j++) {
@@ -286,8 +302,8 @@ PROCESS_THREAD(root_node_process, ev, data)
 
     // Begin process
 	PROCESS_BEGIN();
-
-    this.addr.u8[0] = linkaddr_node_addr.u8[0];
+	printf("process begun\n");
+    	this.addr.u8[0] = linkaddr_node_addr.u8[0];
 	this.addr.u8[1] = linkaddr_node_addr.u8[1];
 	this.dist_root = 0;
 
@@ -298,7 +314,7 @@ PROCESS_THREAD(root_node_process, ev, data)
     broadcast_open(&broadcast_conn, 129, &broadcast_callbacks);
 
     uart0_init(BAUD2UBR(115200)); //set the baud rate as necessary 
-  	uart0_set_input(uart_serial_callback); //set the callback function for serial input
+  	uart0_set_input(&uart_serial_callback); //set the callback function for serial input
 
 	for(;;){
 		PROCESS_WAIT_EVENT();
