@@ -17,6 +17,8 @@
 #define MAX_RETRANSMISSIONS 16
 #define MAX_DISTANCE 300 //a voir si ça fonctionne
 #define MAX_CHILDREN 15
+#define TOPIC_TEMP 20
+#define TOPIC_ACC 21
 
 /* STRUCTURES */
 /* ---------- */
@@ -28,7 +30,8 @@ typedef struct sensor_node{
 
 struct sensor_data;
 typedef struct sensor_data{
-	uint32_t val;
+	uint16_t acc;
+    uint16_t temp;
 } data;
 
 struct child_node;
@@ -89,13 +92,27 @@ void delete_child(int index)
   
 }
 
-static void send_data()
+static void send_data(int topic)
 {
     while(runicast_is_transmitting(&data_conn)){}
     packetbuf_clear();
-    char buffer[32];
-    snprintf(buffer, sizeof(buffer), "%lu", (unsigned long) dat.val);
-    packetbuf_copyfrom(&buffer, strlen(buffer));
+
+    printf("Topic: %d\n", topic);
+    if(topic==20) {
+        char *top = "TOPIC_TEMP";
+        char buffer[strlen(top)+16];
+        snprintf(buffer, sizeof(buffer), "%s %d", top, dat.temp);
+        packetbuf_copyfrom(&buffer, strlen(buffer));
+        printf("send_data: sent temp data");
+    }
+    else if(topic==22){
+        char *top = "TOPIC_ACC";
+        char buffer[strlen(top)+16];
+        snprintf(buffer, sizeof(buffer), "%s %d", top, dat.acc);
+        packetbuf_copyfrom(&buffer, strlen(buffer));
+        printf("send_data: sent acc data");
+    }
+    
     runicast_send(&data_conn, &parent.addr, MAX_RETRANSMISSIONS);
     packetbuf_clear();
 }
@@ -395,6 +412,10 @@ PROCESS_THREAD(sensor_node_process, ev, data)
     this.addr.u8[0] = linkaddr_node_addr.u8[0];
 	this.addr.u8[1] = linkaddr_node_addr.u8[1];
 
+    // Initially no data
+    dat.temp=-555;
+    dat.acc=-555;
+
     // Open channels
 	runicast_open(&routing_conn, 144, &routing_runicast_callbacks);                 // Unicast routing channel
 	runicast_open(&data_conn, 154, &data_runicast_callbacks);                       // Data channel
@@ -428,26 +449,32 @@ PROCESS_THREAD(sensor_node_process, ev, data)
     }
     // Send data periodically
     else if (option==1){
-        uint16_t acc = (uint16_t) rand(); //accm_read_axis(0);
-        printf("Accelerometer data (xaxis): %u\n", acc);
-        uint8_t temp = (uint8_t) rand(); //tmp102_read_temp_simple();
-        printf("Temperature data: %u\n", temp);
-        dat.val = ((uint32_t) acc << 16 || (temp & (uint32_t) 0xFF));
-        send_data();
-        printf('Data sent \n');
+        dat.acc = (uint16_t) rand(); //accm_read_axis(0);
+        printf("Accelerometer data (xaxis): %u\n", dat.acc);
+        dat.temp = (uint16_t) rand(); //tmp102_read_temp_simple();
+        printf("Temperature data: %u\n", dat.temp);
+        send_data(TOPIC_TEMP);
+        send_data(TOPIC_ACC);
+        printf('ACC and TEMP Data sent \n');
     }
     // Send data if change
     else if (option==2){
-        uint16_t acc = (uint16_t) rand(); //accm_read_axis(0);
-        uint8_t temp = (uint8_t) rand(); //tmp102_read_temp_simple();
-        uint32_t testVal = ((uint32_t) acc << 16 || (temp & (uint32_t) 0xFF));
+        uint16_t acc = (uint16_t) rand();   //accm_read_axis(0);
+        uint8_t temp = (uint8_t) rand();    //tmp102_read_temp_simple();
         printf("Accelerometer data (xaxis): %u\n", acc);
         printf("Temperature data: %u\n", temp);
-        if (dat.val!=testVal){
-            printf("Data changed!\n");
-            dat.val=testVal;
-            send_data();
-            printf("Data sent\n");
+
+        if (dat.acc!=acc){
+            printf("ACC Data changed!\n");
+            dat.acc=acc;
+            send_data(TOPIC_ACC);
+            printf("ACC Data sent\n");   
+        }
+        else if (dat.temp!=temp){
+            printf("TEMP Data changed!\n");
+            dat.temp=temp;
+            send_data(TOPIC_TEMP);
+            printf("TEMP Data sent\n");
         }
     }
     }
