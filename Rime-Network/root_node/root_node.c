@@ -241,23 +241,12 @@ static int serial_buf_index;
 */
 static void uart_serial_callback(unsigned char * c) { 
   if(c!= '\n'){
-        /*if (c!=0 ||c!=1 || c!=2) 
-        { 
-		printf("%d\n",c);
-            printf("Error : you didn't enter a valid option, please enter \n 0: for stoping sending data \n 1: for a periodically sending of data \n 2: for sending data only when there are some news");
-        }
-        else {*/
-            serial_buf[serial_buf_index] = c; 
-  	//}
+	serial_buf[serial_buf_index] = c;   	
   }  
   if(c == '\n' || c == EOF || c == '\0'){ 
    //printf("%s\n", (char *)serial_buf);
    packetbuf_clear();
    serial_buf[strcspn ( serial_buf, "\n" )] = '\0';
-	size_t l=strcspn(serial_buf, "\n");
-	printf("%u\n",l); //01
-	size_t stl=strlen(serial_buf);
-	printf("%u\n",stl); //1
    packetbuf_copyfrom(serial_buf, strlen(serial_buf));
 
    //Send the option to all the child nodes
