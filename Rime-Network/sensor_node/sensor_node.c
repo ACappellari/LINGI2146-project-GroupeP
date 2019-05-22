@@ -18,7 +18,7 @@
 #define MAX_DISTANCE 300 //a voir si ça fonctionne
 #define MAX_CHILDREN 15
 #define TOPIC_TEMP 20
-#define TOPIC_ACC 21
+#define TOPIC_ACC 22
 
 /* STRUCTURES */
 /* ---------- */
@@ -103,14 +103,14 @@ static void send_data(int topic)
         char buffer[strlen(top)+16];
         snprintf(buffer, sizeof(buffer), "%s %d", top, dat.temp);
         packetbuf_copyfrom(&buffer, strlen(buffer));
-        printf("send_data: sent temp data");
+        printf("send_data: sent temp data\n");
     }
     else if(topic==22){
         char *top = "TOPIC_ACC";
         char buffer[strlen(top)+16];
         snprintf(buffer, sizeof(buffer), "%s %d", top, dat.acc);
         packetbuf_copyfrom(&buffer, strlen(buffer));
-        printf("send_data: sent acc data");
+        printf("send_data: sent acc data\n");
     }
     
     runicast_send(&data_conn, &parent.addr, MAX_RETRANSMISSIONS);
@@ -292,6 +292,7 @@ static void options_recv_runicast(struct runicast_conn *c, const linkaddr_t *fro
 */
 static void options_sent_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
 {
+
   printf("Option packet sent to %d.%d, retransmissions %d\n", to->u8[0], to->u8[1], retransmissions);
 }
 
@@ -427,6 +428,8 @@ PROCESS_THREAD(sensor_node_process, ev, data)
     // Timers
     static struct etimer HELLO_timer;
     static struct etimer DATA_timer;
+    static struct etimer et;
+
 
     // Send ROUTING_HELLO to all node within reach, at random HELLO_timer intervals
     HELLO: while((parent.addr.u8[0] == 0) && (parent.addr.u8[1] == 0)) {
@@ -442,6 +445,7 @@ PROCESS_THREAD(sensor_node_process, ev, data)
     
     while(parent.addr.u8[0] != 0) {
     etimer_set(&DATA_timer, CLOCK_SECOND * 2 + random_rand() % (CLOCK_SECOND * 8));
+    etimer_set(&et, 3000);
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&DATA_timer));
     // Don't send data
     if(option==0){
@@ -454,13 +458,15 @@ PROCESS_THREAD(sensor_node_process, ev, data)
         dat.temp = (uint16_t) rand(); //tmp102_read_temp_simple();
         printf("Temperature data: %u\n", dat.temp);
         send_data(TOPIC_TEMP);
+        PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
+
         send_data(TOPIC_ACC);
-        printf('ACC and TEMP Data sent \n');
+        printf("ACC and TEMP Data sent \n");
     }
     // Send data if change
     else if (option==2){
         uint16_t acc = (uint16_t) rand();   //accm_read_axis(0);
-        uint8_t temp = (uint8_t) rand();    //tmp102_read_temp_simple();
+        uint8_t temp = (uint16_t) rand();    //tmp102_read_temp_simple();
         printf("Accelerometer data (xaxis): %u\n", acc);
         printf("Temperature data: %u\n", temp);
 
@@ -468,12 +474,14 @@ PROCESS_THREAD(sensor_node_process, ev, data)
             printf("ACC Data changed!\n");
             dat.acc=acc;
             send_data(TOPIC_ACC);
+            PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
             printf("ACC Data sent\n");   
         }
         else if (dat.temp!=temp){
             printf("TEMP Data changed!\n");
             dat.temp=temp;
             send_data(TOPIC_TEMP);
+            PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
             printf("TEMP Data sent\n");
         }
     }
