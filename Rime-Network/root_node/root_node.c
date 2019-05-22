@@ -60,18 +60,6 @@ static struct broadcast_conn broadcast_conn;
 /* HELPER FUNCTIONS */
 /* ---------------- */
 
-// @Def: Generic function to send a certain payload to a certain address through a given connection
-static void send_packet(struct runicast_conn *c, char *payload, int length, linkaddr_t * to){
-
-    while(runicast_is_transmitting(c)) {}
-    char buffer[length];
-    snprintf(buffer, sizeof(buffer), "%s", payload);
-    packetbuf_copyfrom(&buffer, strlen(buffer));
-    runicast_send(c, to, MAX_RETRANSMISSIONS);
-    packetbuf_clear();
-
-}
-
 /*
  * @Def : Function used to check that a given node is not already in the children list of the node.
  * @Param: a child node structure representing a node (that has to be tested)

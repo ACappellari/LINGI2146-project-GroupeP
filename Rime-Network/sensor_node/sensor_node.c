@@ -8,7 +8,6 @@
 #include "adxl345.h"    // Accelerometer sensor
 #include "tmp102.h"     // Temperature sensor
 #include "dev/i2cmaster.h"
-#include "math.h"
 #include "net/rime/runicast.h"
 #include "net/rime/broadcast.h"
 
@@ -16,7 +15,7 @@
 /* --------- */
 #define ROUTING_NEWCHILD 50
 #define MAX_RETRANSMISSIONS 16
-#define MAX_DISTANCE infinity() //a voir si ça fonctionne
+#define MAX_DISTANCE 300 //a voir si ça fonctionne
 #define MAX_CHILDREN 15
 
 /* STRUCTURES */
@@ -29,7 +28,7 @@ typedef struct sensor_node{
 
 struct sensor_data;
 typedef struct sensor_data{
-	char val[32];
+	uint32_t val
 } data;
 
 struct child_node;
@@ -43,7 +42,7 @@ node parent;
 node this;
 child children[MAX_CHILDREN];
 static uint8_t children_numb = 0;
-static uint8_t option = 0;
+static uint8_t option = 1;
 data dat;
 
 /* CONNECTIONS */
@@ -61,16 +60,24 @@ struct broadcast_conn broadcast_conn;
 /* ---------------- */
 
 // @Def: Generic function to send a certain payload to a certain address through a given connection
-static void send_packet(struct runicast_conn *c, char *payload, int length, linkaddr_t *to){
+// format: 0 = %d, 1=%s
+/*
+static void send_packet(struct runicast_conn *c, void *payload, int length, int format, linkaddr_t *to){
 
     while(runicast_is_transmitting(c)) {}
     char buffer[length];
-    snprintf(buffer, sizeof(buffer), "%s", payload);
+    if (format==0) {
+        snprintf(buffer, sizeof(buffer), "%d", payload);
+    }
+    else if (format==1) {
+        snprintf(buffer, sizeof(buffer), "%s", payload);
+    }
     packetbuf_copyfrom(&buffer, strlen(buffer));
     runicast_send(c, to, MAX_RETRANSMISSIONS);
     packetbuf_clear();
 
 }
+*/
 
 /*
  * @Def : Function used to check that a given node is not already in the children list of the node.
@@ -102,6 +109,59 @@ void delete_child(int index)
   
 }
 
+static void send_data()
+{
+    while(runicast_is_transmitting(&data_conn)){}
+    packetbuf_clear();
+    int len = strlen(dat.val);
+    char buffer[len + 16];
+    snprintf(buffer, sizeof(buffer), "%d", dat.val);
+    packetbuf_copyfrom(&buffer, strlen(buffer));
+    runicast_send(&data_conn, &parent.addr, MAX_RETRANSMISSIONS);
+	packetbuf_clear();
+}
+
+static void transfer_data(char* payload)
+{
+	while(runicast_is_transmitting(&data_conn)){}
+	packetbuf_clear();                             
+	int len = strlen(payload);
+	char buffer[len+16];                              
+	snprintf(buffer, sizeof(buffer), "%s", payload);
+	packetbuf_copyfrom(&buffer, strlen(buffer));     
+	runicast_send(&data_conn, &parent.addr, MAX_RETRANSMISSIONS);  
+	packetbuf_clear();
+}
+
+static void transfer_option(char *opt)
+{
+	while(runicast_is_transmitting(&options_conn)){}
+	int len = strlen(opt);
+	char buffer[len];
+	snprintf(buffer, sizeof(buffer), "%s", opt);
+	packetbuf_clear();
+	packetbuf_copyfrom(&buffer, strlen(buffer));
+	int j;
+	for(j = 0; j < children_numb; j++) {
+		runicast_send(&options_conn, &children[j].addr, MAX_RETRANSMISSIONS);
+	}
+	packetbuf_clear();
+}
+
+static void send_routing_newchild()
+{
+	while(runicast_is_transmitting(&routing_conn)){}
+	packetbuf_clear();
+	uint16_t notif = ROUTING_NEWCHILD;
+	char buffer[16];
+	snprintf(buffer, sizeof(buffer), "%d", notif);
+	packetbuf_copyfrom(&buffer, strlen(buffer));
+	runicast_send(&routing_conn, &parent.addr, MAX_RETRANSMISSIONS);
+	packetbuf_clear();
+
+}
+
+
 
 /* BROADCAST ROUTING MESSAGES */
 /* -------------------------- */
@@ -130,6 +190,7 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
 {
 	char *payload = (char *) packetbuf_dataptr();    
 	uint8_t pl = (uint8_t) atoi(payload);
+	printf("Received routing msg %d\n", pl);
 
     // Upon ROUTING_NEWCHILD reception:
     if(pl == ROUTING_NEWCHILD) {
@@ -153,17 +214,19 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
         uint8_t dist_root = pl;
 
         child testChild;
-	testChild.addr.u8[0] = from->u8[0];
-	testChild.addr.u8[1] = from->u8[1];
+	    testChild.addr.u8[0] = from->u8[0];
+	    testChild.addr.u8[1] = from->u8[1];
 
         // If ROUTING_ANS_DIST sender is closer to root than current parent
         if((parent.dist_root > dist_root) && (check_children(testChild) == 0)) {
 	    // Replace current parent with ROUTING_ANS_DIST sender
             parent.addr.u8[0] = from->u8[0];
-	    parent.addr.u8[1] = from->u8[1];		
-	    parent.dist_root = dist_root;
-	    this.dist_root = dist_root + 1;
-            send_packet(&routing_conn,"ROUTING_NEWCHILD",16, &parent.addr); // Warn him by sending ROUTING_NEWCHILD
+	        parent.addr.u8[1] = from->u8[1];		
+	        parent.dist_root = dist_root;
+	        this.dist_root = dist_root + 1;
+            printf("Set new parent to that with distance %d from root", dist_root);
+            send_routing_newchild(); // Warn him by sending ROUTING_NEWCHILD
+            printf("Sent ROUTING_NEWCHILD to my new parent\n");
         }
 
     }
@@ -219,10 +282,8 @@ static void options_recv_runicast(struct runicast_conn *c, const linkaddr_t *fro
 	uint8_t opt = (uint8_t) atoi(opt_payload);
 	if(opt == 0 || opt == 1 || opt == 2){
 		option = opt;
-        int j;
-	    for(j = 0; j < children_numb; j++) {
-            send_packet(&options_conn, opt_payload, strlen(opt_payload), &children[j].addr);
-	    }
+        transfer_option();
+        printf("Transfered option %d\n",option);
 	}
     else {printf("Asked option doesn't exist");}
 }
@@ -279,8 +340,8 @@ static void data_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, 
     /* Copy the data from the packetbuf */
     char * data_payload = (char *) packetbuf_dataptr();
     printf("DATA PACKET RECEIVED : %s\n", data_payload); //idem changé l'intitulé du msg
-    send_packet(&data_conn, data_payload, strlen(data_payload)+16, &parent.addr);
-
+    transfer_data(data_payload);
+    printf("Transfered data to my parent \n");
 }
 
 /*
@@ -336,10 +397,14 @@ PROCESS_THREAD(sensor_node_process, ev, data)
 
     // Begin process
 	PROCESS_BEGIN();
+	
+    	printf("Process has begun\n");
 
     // Initializes sensors
     tmp102_init();
     accm_init();
+
+	printf("Sensor initialized\n");
 
     // Initially not raccorded to root
     parent.addr.u8[0] = 0;
@@ -356,18 +421,23 @@ PROCESS_THREAD(sensor_node_process, ev, data)
 	runicast_open(&options_conn, 164, &options_runicast_callbacks);                 // Options channel
 	broadcast_open(&broadcast_conn, 129, &broadcast_callbacks);                     // Broadcast routing channel
 
+	printf("Channel opened\n");
+
     // Timers
     static struct etimer HELLO_timer;
     static struct etimer DATA_timer;
 
     // Send ROUTING_HELLO to all node within reach, at random HELLO_timer intervals
-    HELLO: while(parent.addr.u8[0] != 0) {
+    HELLO: while((parent.addr.u8[0] == 0) && (parent.addr.u8[1] == 0)) {
         // Delay between two HELLO send
         etimer_set(&HELLO_timer, CLOCK_SECOND * 8 + random_rand() % (CLOCK_SECOND * 16));
 		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&HELLO_timer));
 
         broadcast_send(&broadcast_conn);
+	printf("Sent one ROUTING_HELLO message!\n");
     }
+
+	printf("I have a parent now!\n");
     
     while(parent.addr.u8[0] != 0) {
     etimer_set(&DATA_timer, CLOCK_SECOND * 2 + random_rand() % (CLOCK_SECOND * 8));
@@ -380,21 +450,21 @@ PROCESS_THREAD(sensor_node_process, ev, data)
     else if (option==1){
         int16_t acc = accm_read_axis(0);
         int8_t temp = tmp102_read_temp_simple();
-        uint32_t val = ((uint32_t) acc << 16 || (temp & (uint32_t) 0xFF));
-        sprintf(dat.val, "%lu", (unsigned long)val);
-        send_packet(&data_conn, dat.val, strlen(dat.val)+16, &parent.addr);
+        dat.val = ((uint32_t) acc << 16 || (temp & (uint32_t) 0xFF));
+        send_data();
+        printf('Data sent \n');
     }
     // Send data if change
     else if (option==2){
         int16_t acc = accm_read_axis(0);
         int8_t temp = tmp102_read_temp_simple();
         uint32_t testVal = ((uint32_t) acc << 16 || (temp & (uint32_t) 0xFF));
-	char tst[32];
-	sprintf(tst, "%lu", (unsigned long)testVal);
         
-        if (dat.val!=tst){
-            sprintf(dat.val, "%lu", (unsigned long)testVal);
-            send_packet(&data_conn, dat.val, strlen(dat.val)+16, &parent.addr);
+        if (dat.val!=testVal){
+            printf("Data changed!\n");
+            dat.val=testVal;
+            send_data();
+            printf("Data sent\n");
         }
     }
     }
