@@ -44,8 +44,6 @@ node this;
 child children[MAX_CHILDREN];
 static uint8_t children_numb = 0;
 
-
-
 /* CONNECTIONS */
 /* ----------- */
 
@@ -308,3 +306,4 @@ PROCESS_THREAD(root_node_process, ev, data)
 
     PROCESS_END();
 }
+
