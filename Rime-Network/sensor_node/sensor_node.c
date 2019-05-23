@@ -16,7 +16,7 @@
 #define ROUTING_NEWCHILD 50
 #define MAX_RETRANSMISSIONS 16
 #define MAX_DISTANCE 300 //a voir si ça fonctionne
-#define MAX_CHILDREN 15
+#define MAX_CHILDREN 1
 #define TOPIC_TEMP 20
 #define TOPIC_ACC 22
 
@@ -121,9 +121,10 @@ static void transfer_data(char* payload)
 	int len = strlen(payload);
 	char buffer[len];                              
 	snprintf(buffer, sizeof(buffer), "%s", payload);
-	packetbuf_copyfrom(&buffer, strlen(buffer));     
-	runicast_send(&data_conn, &parent.addr, MAX_RETRANSMISSIONS);  
+	packetbuf_copyfrom(&buffer, strlen(buffer));
+	runicast_send(&data_conn, &parent.addr, MAX_RETRANSMISSIONS);
 	packetbuf_clear();
+    printf("transfer_data: Data sent to %d.%d\n", parent.addr.u8[0], parent.addr.u8[1]); 
 }
 
 static void transfer_option(char *opt)
@@ -183,7 +184,7 @@ routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 			packetbuf_clear();
 			char *dist_root ;
 			sprintf(dist_root, "%d", 500); //unreachable as it doesn't have place for an other child in its children list
-			printf("The node : %d.%d doesn't have place anymore\n", this.addr.u8[0], this.addr.u8[1]);
+			printf("The node : %d.%d doesn't have space for children anymore\n", this.addr.u8[0], this.addr.u8[1]);
 			packetbuf_copyfrom(dist_root, sizeof(dist_root));
 			runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);
             printf("Replied to %d.%d with ROUTING_ANS_DIST = 500\n", from->u8[0], from->u8[1]);
@@ -240,6 +241,9 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
 	        this.dist_root = dist_root + 1;
             printf("Node %d.%d is closer to root than my current parent: replace it and send him ROUTING_NEWCHILD\n", from->u8[0], from->u8[1]);
             send_routing_newchild(); // Warn him by sending ROUTING_NEWCHILD
+        }
+        else {
+            printf("Node %d.%d is further or at same distance to root that my current parent %d.%d: keep it\n", from->u8[0], from->u8[1], parent.addr.u8[0], parent.addr.u8[1]);
         }
     }
 }
@@ -355,7 +359,7 @@ static void data_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, 
     
     /* Copy the data from the packetbuf */
     char * data_payload = (char *) packetbuf_dataptr();
-    printf("Data = %s received from %d.%d, seqno %d\n", data_payload, from->u8[0], from->u8[1], seqno);
+    printf("Received data = %s from %d.%d, seqno %d\n", data_payload, from->u8[0], from->u8[1], seqno);
     transfer_data(data_payload);
 }
 
@@ -498,6 +502,8 @@ PROCESS_THREAD(sensor_node_process, ev, data)
             }
         }
     }
+
+    printf("Out of while\n");
 
     goto HELLO;
     PROCESS_END(); 

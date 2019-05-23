@@ -16,7 +16,7 @@
 #define ROUTING_NEWCHILD  50
 #define MAX_RETRANSMISSIONS 16
 #define SERIAL_BUF_SIZE 128 //Size of the communication buffer with the gateway
-#define MAX_CHILDREN 15
+#define MAX_CHILDREN 1
 
 /* STRUCTURES */
 /* ---------- */
@@ -99,24 +99,24 @@ routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 	printf("ROOT: Received ROUTING_HELLO from %d.%d\n", from->u8[0], from->u8[1]);
 
 	if(children_numb < MAX_CHILDREN)
-		{
-			while(runicast_is_transmitting(&routing_conn)){}
-			packetbuf_clear();
-			packetbuf_copyfrom("0", 1);
-			runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);  // answer ROUTING_ANS_DIST
-            printf("Replied to %d.%d with ROUTING_ANS_DIST = 0\n", from->u8[0], from->u8[1]);
-		}
-		else 
-		{
-			while(runicast_is_transmitting(&routing_conn)){}
-			packetbuf_clear();
-			char *dist_root ;
-			sprintf(dist_root, "%d", 500); //unreachable as it doesn't have space for an other child in its children list
-			printf("ROOT doesn't have space for new children anymore\n");
-			packetbuf_copyfrom(dist_root, sizeof(dist_root));
-			runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);
-            printf("Replied to %d.%d with ROUTING_ANS_DIST = 500\n", from->u8[0], from->u8[1]);
-		}
+	{
+		while(runicast_is_transmitting(&routing_conn)){}
+		packetbuf_clear();
+		packetbuf_copyfrom("0", 1);
+		runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);  // answer ROUTING_ANS_DIST
+           printf("Replied to %d.%d with ROUTING_ANS_DIST = 0\n", from->u8[0], from->u8[1]);
+	}
+	else 
+	{
+		while(runicast_is_transmitting(&routing_conn)){}
+		packetbuf_clear();
+		char *dist_root ;
+		sprintf(dist_root, "%d", 500); //unreachable as it doesn't have space for an other child in its children list
+		printf("ROOT doesn't have space for new children anymore\n");
+		packetbuf_copyfrom(dist_root, sizeof(dist_root));
+		runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);
+        printf("Replied to %d.%d with ROUTING_ANS_DIST = 500\n", from->u8[0], from->u8[1]);
+	}
 
 }
 
