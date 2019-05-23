@@ -97,20 +97,17 @@ static void send_data(int topic)
     while(runicast_is_transmitting(&data_conn)){}
     packetbuf_clear();
 
-    printf("Topic: %d\n", topic);
     if(topic==20) {
         char *top = "TOPIC_TEMP";
         char buffer[strlen(top)+16];
         snprintf(buffer, sizeof(buffer), "%s %d", top, dat.temp);
         packetbuf_copyfrom(&buffer, strlen(buffer));
-        printf("send_data: sent temp data\n");
     }
     else if(topic==22){
         char *top = "TOPIC_ACC";
         char buffer[strlen(top)+16];
         snprintf(buffer, sizeof(buffer), "%s %d", top, dat.acc);
         packetbuf_copyfrom(&buffer, strlen(buffer));
-        printf("send_data: sent acc data\n");
     }
     
     runicast_send(&data_conn, &parent.addr, MAX_RETRANSMISSIONS);
@@ -166,6 +163,7 @@ static void send_routing_newchild()
 static void
 routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 {
+    printf("Received ROUTING_HELLO from %d.%d\n", from->u8[0], from->u8[1]);
 
 	// If already connected to root
 	if(parent.addr.u8[0] != 0){
@@ -175,7 +173,11 @@ routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 		sprintf(dist_root, "%d", this.dist_root);
 		packetbuf_copyfrom(dist_root, sizeof(dist_root));
 		runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);  // answer ROUTING_ANS_DIST
+        printf("Replied to %d.%d with ROUTING_ANS_DIST = %u\n", from->u8[0], from->u8[1], (uint8_t) atoi(dist_root));
 	}
+    else {
+        printf("Didn't reply to %d.%d because I am not attached to root yet\n", from->u8[0], from->u8[1]);
+    }
 }
 
 
@@ -186,10 +188,10 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
 {
 	char *payload = (char *) packetbuf_dataptr();    
 	uint8_t pl = (uint8_t) atoi(payload);
-	printf("Received routing msg %d\n", pl);
 
     // Upon ROUTING_NEWCHILD reception:
     if(pl == ROUTING_NEWCHILD) {
+        printf("Received ROUTING_NEWCHILD from node %d.%d\n", from->u8[0], from->u8[1]);
         // If children list not full
         if(children_numb < MAX_CHILDREN){
 			child testChild;
@@ -199,6 +201,7 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
 				children[children_numb] = testChild;   // Add the children
 				children_numb++;
 			}
+            printf("Added node %d.%d to my children\n", from->u8[0], from->u8[1]);
 		}
 		else{
 			printf("Max number of children reached\n");
@@ -213,6 +216,8 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
 	    testChild.addr.u8[0] = from->u8[0];
 	    testChild.addr.u8[1] = from->u8[1];
 
+        printf("Received ROUTING_ANS_DIST = %d from %d.%d\n", dist_root, from->u8[0], from->u8[1]);
+
         // If ROUTING_ANS_DIST sender is closer to root than current parent
         if((parent.dist_root > dist_root) && (check_children(testChild) == 0)) {
 	    // Replace current parent with ROUTING_ANS_DIST sender
@@ -220,19 +225,16 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
 	        parent.addr.u8[1] = from->u8[1];		
 	        parent.dist_root = dist_root;
 	        this.dist_root = dist_root + 1;
-            printf("Set new parent to that with distance %d from root", dist_root);
+            printf("Node %d.%d is closer to root than my current parent: replace it and send him ROUTING_NEWCHILD\n", from->u8[0], from->u8[1]);
             send_routing_newchild(); // Warn him by sending ROUTING_NEWCHILD
-            printf("Sent ROUTING_NEWCHILD to my new parent\n");
         }
-
     }
-
 }
 
 static void
 routing_sent_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
 {
-
+    printf("Routing packet sent to node %d.%d, retransmission %d\n", to->u8[0], to->u8[1], retransmissions);
 }
 
 static void
@@ -247,11 +249,16 @@ routing_timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t
 	// If the node lost is the parent:
 	if(testChild.addr.u8[0] == parent.addr.u8[0] && testChild.addr.u8[1] == parent.addr.u8[1]){
 		parent.addr.u8[0] = 0;
+        parent.addr.u8[1] = 0;
 		parent.dist_root = MAX_DISTANCE;       
+        printf("Routing packet timed out when sending to parent %d.%d, retransmissions %d\n ", to->u8[0], to->u8[1], retransmissions);
+        printf("Deleted parent %d.%d\n", to->u8[0], to->u8[1]);
 	}
 	//If the node lost is a child node: 
 	else if(isChild > 0){
-		delete_child(isChild); 
+		delete_child(isChild);
+        printf("Routing packet timed out when sending to children %d.%d, retransmissions %d\n ", to->u8[0], to->u8[1], retransmissions);
+        printf("Deleted children %d.%d\n", to->u8[0], to->u8[1]);
 	}
 	else{
 		printf("Error, unicast message sent to unknown node timed out\n");
@@ -274,14 +281,13 @@ static void options_recv_runicast(struct runicast_conn *c, const linkaddr_t *fro
 
     /* Copy the data from the packetbuf */
 	char * opt_payload = (char *) packetbuf_dataptr();
-	printf("OPTION PACKET RECEIVED : %s\n", opt_payload);
+	printf("Received option = %s from my parent %d.%d\n", opt_payload, from->u8[0], from->u8[1]);
 	uint8_t opt = (uint8_t) atoi(opt_payload);
 	if(opt == 0 || opt == 1 || opt == 2){
 		option = opt;
         transfer_option(opt_payload);
-        printf("Transfered option %d\n",option);
 	}
-    else {printf("Asked option doesn't exist");}
+    else {printf("Received option doesn't exist\n");}
 }
 
 /*
@@ -293,7 +299,7 @@ static void options_recv_runicast(struct runicast_conn *c, const linkaddr_t *fro
 static void options_sent_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
 {
 
-  printf("Option packet sent to %d.%d, retransmissions %d\n", to->u8[0], to->u8[1], retransmissions);
+  printf("Option packet sent to child %d.%d, retransmissions %d\n", to->u8[0], to->u8[1], retransmissions);
 }
 
 /*
@@ -304,7 +310,7 @@ static void options_sent_runicast(struct runicast_conn *c, const linkaddr_t *to,
 */
 static void options_timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
 {
-  	printf("Option packet timed out when sending to %d.%d, retransmissions %d\n ", to->u8[0], to->u8[1], retransmissions);
+  	printf("Option packet timed out when sending to child %d.%d, retransmissions %d\n ", to->u8[0], to->u8[1], retransmissions);
 	
 	//Create temporary node for testing
 	child test;
@@ -332,13 +338,12 @@ static void options_timedout_runicast(struct runicast_conn *c, const linkaddr_t 
 */
 static void data_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
 {
-    printf("Msg received on data_conn from %d.%d, seqno %d\n", from->u8[0], from->u8[1], seqno); //changé l'intitulé du message 'msg rcvd on data_conn' au lieu de 'runicast msg'
+    
     
     /* Copy the data from the packetbuf */
     char * data_payload = (char *) packetbuf_dataptr();
-    printf("DATA PACKET RECEIVED : %s\n", data_payload); //idem changé l'intitulé du msg
+    printf("Data = %s received from %d.%d, seqno %d\n", data_payload, from->u8[0], from->u8[1], seqno);
     transfer_data(data_payload);
-    printf("Transfered data to my parent \n");
 }
 
 /*
@@ -349,7 +354,7 @@ static void data_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, 
 */
 static void data_sent_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
 {
-    printf("Data packet sent to %d.%d, retransmissions %d\n", to->u8[0], to->u8[1], retransmissions);
+    printf("Data packet sent to parent %d.%d, retransmissions %d\n", to->u8[0], to->u8[1], retransmissions);
 }
 
 /*
@@ -360,10 +365,11 @@ static void data_sent_runicast(struct runicast_conn *c, const linkaddr_t *to, ui
 */
 static void data_timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
 {
-    printf("Data packet timed out when sending to %d.%d, retransmissions %d\n ", to->u8[0], to->u8[1], retransmissions);
+    printf("Data packet timed out when sending to parent %d.%d, retransmissions %d\n ", to->u8[0], to->u8[1], retransmissions);
 
     /* Prevent that the parents aren't attainable anymore*/
     parent.addr.u8[0] = 0;
+    parent.addr.u8[1] = 0;
     parent.dist_root= MAX_DISTANCE; 
 }
 
@@ -394,14 +400,10 @@ PROCESS_THREAD(sensor_node_process, ev, data)
 
     // Begin process
 	PROCESS_BEGIN();
-	
-    	printf("Process has begun\n");
 
     // Initializes sensors
     tmp102_init();
     accm_init();
-
-	printf("Sensor initialized\n");
 
     // Initially not raccorded to root
     parent.addr.u8[0] = 0;
@@ -423,13 +425,10 @@ PROCESS_THREAD(sensor_node_process, ev, data)
 	runicast_open(&options_conn, 164, &options_runicast_callbacks);                 // Options channel
 	broadcast_open(&broadcast_conn, 129, &broadcast_callbacks);                     // Broadcast routing channel
 
-	printf("Channel opened\n");
-
     // Timers
     static struct etimer HELLO_timer;
     static struct etimer DATA_timer;
     static struct etimer et;
-
 
     // Send ROUTING_HELLO to all node within reach, at random HELLO_timer intervals
     HELLO: while((parent.addr.u8[0] == 0) && (parent.addr.u8[1] == 0)) {
@@ -438,53 +437,53 @@ PROCESS_THREAD(sensor_node_process, ev, data)
 		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&HELLO_timer));
 
         broadcast_send(&broadcast_conn);
-	printf("Sent one ROUTING_HELLO message!\n");
+	    printf("Broadcast ROUTING_HELLO\n");
     }
 
-	printf("I have a parent now!\n");
+	printf("Attached to parent %d.%d\n", parent.addr.u8[0], parent.addr.u8[1]);
     
     while(parent.addr.u8[0] != 0) {
-    etimer_set(&DATA_timer, CLOCK_SECOND * 2 + random_rand() % (CLOCK_SECOND * 8));
-    etimer_set(&et, 3000);
-    PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&DATA_timer));
-    // Don't send data
-    if(option==0){
-        // Do nothing
-    }
-    // Send data periodically
-    else if (option==1){
-        dat.acc = (uint16_t) rand(); //accm_read_axis(0);
-        printf("Accelerometer data (xaxis): %u\n", dat.acc);
-        dat.temp = (uint16_t) rand(); //tmp102_read_temp_simple();
-        printf("Temperature data: %u\n", dat.temp);
-        send_data(TOPIC_TEMP);
-        PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
-
-        send_data(TOPIC_ACC);
-        printf("ACC and TEMP Data sent \n");
-    }
-    // Send data if change
-    else if (option==2){
-        uint16_t acc = (uint16_t) rand();   //accm_read_axis(0);
-        uint8_t temp = (uint16_t) rand();    //tmp102_read_temp_simple();
-        printf("Accelerometer data (xaxis): %u\n", acc);
-        printf("Temperature data: %u\n", temp);
-
-        if (dat.acc!=acc){
-            printf("ACC Data changed!\n");
-            dat.acc=acc;
-            send_data(TOPIC_ACC);
-            PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
-            printf("ACC Data sent\n");   
-        }
-        else if (dat.temp!=temp){
-            printf("TEMP Data changed!\n");
-            dat.temp=temp;
+        etimer_set(&DATA_timer, CLOCK_SECOND * 2 + random_rand() % (CLOCK_SECOND * 8));
+        etimer_set(&et, 3000);
+        PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&DATA_timer));
+    
+        // Don't send data
+        if(option==0){
+            printf("Option 0: Silenced\n");
+            // Do nothing
+        }   
+    
+        // Send data periodically
+        else if (option==1){
+            dat.acc = (uint16_t) rand(); //accm_read_axis(0);
+            printf("Acquired ACC data: %u\n", dat.acc);
+            dat.temp = (uint16_t) rand(); //tmp102_read_temp_simple();
+            printf("Acquired TEMP data: %u\n", dat.temp);
             send_data(TOPIC_TEMP);
             PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
-            printf("TEMP Data sent\n");
+            send_data(TOPIC_ACC);
         }
-    }
+    
+        // Send data if change
+        else if (option==2){
+            uint16_t acc = (uint16_t) rand();   //accm_read_axis(0);
+            printf("Acquired ACC data: %u\n", dat.acc);
+            uint8_t temp = (uint16_t) rand();    //tmp102_read_temp_simple();
+            printf("Acquired TEMP data: %u\n", dat.temp);
+
+            if (dat.acc!=acc){
+                printf("Option 2: ACC Data changed!\n");
+                dat.acc=acc;
+                send_data(TOPIC_ACC);
+                PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
+            }
+            else if (dat.temp!=temp){
+                printf("Option 2: TEMP Data changed!\n");
+                dat.temp=temp;
+                send_data(TOPIC_TEMP);
+                PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
+            }
+        }
     }
 
     goto HELLO;

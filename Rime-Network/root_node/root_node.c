@@ -59,18 +59,6 @@ static struct broadcast_conn broadcast_conn;
 /* HELPER FUNCTIONS */
 /* ---------------- */
 
-// @Def: Generic function to send a certain payload to a certain address through a given connection
-static void send_packet(struct runicast_conn *c, char *payload, int length, linkaddr_t * to){
-
-    while(runicast_is_transmitting(c)) {}
-    char buffer[length];
-    snprintf(buffer, sizeof(buffer), "%s", payload);
-    packetbuf_copyfrom(&buffer, strlen(buffer));
-    runicast_send(c, to, MAX_RETRANSMISSIONS);
-    packetbuf_clear();
-
-}
-
 /*
  * @Def : Function used to check that a given node is not already in the children list of the node.
  * @Param: a child node structure representing a node (that has to be tested)
@@ -108,11 +96,11 @@ void delete_child(int index)
 static void
 routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 {
-	printf("I A M ROOT, broadcast message received from %d.%d: '%s'\n",
-	from->u8[0], from->u8[1], (char *)packetbuf_dataptr());
+	printf("ROOT: Received ROUTING_HELLO from %d.%d\n", from->u8[0], from->u8[1]);
 
 	packetbuf_copyfrom("0", 1);
 	runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);
+    printf("Replied to %d.%d with ROUTING_ANS_DIST = 0\n", from->u8[0], from->u8[1]);
 
 }
 
@@ -126,6 +114,7 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
 
     // Upon ROUTING_NEWCHILD reception:
     if(pl == ROUTING_NEWCHILD) {
+        printf("Received ROUTING_NEWCHILD from node %d.%d\n", from->u8[0], from->u8[1]);
         // If children list not full
         if(children_numb < MAX_CHILDREN){
 			child testChild;
@@ -135,6 +124,7 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
 				children[children_numb] = testChild;   // Add the children
 				children_numb++;
 			}
+            printf("Added node %d.%d to my children\n", from->u8[0], from->u8[1]);
 		}
 		else{
 			printf("Max number of children reached\n");
@@ -150,7 +140,7 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
 static void
 routing_sent_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t retransmissions)
 {
-
+    printf("Routing packet sent to node %d.%d, retransmission %d\n", to->u8[0], to->u8[1], retransmissions);
 }
 
 static void
@@ -165,6 +155,8 @@ routing_timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t
 
 	//If the node lost is a child node: 
 	if(isChild > 0){
+        printf("Routing packet timed out when sending to children %d.%d, retransmissions %d\n ", to->u8[0], to->u8[1], retransmissions);
+        printf("Deleted children %d.%d\n", to->u8[0], to->u8[1]);
 		delete_child(isChild); 
 	}
 	else{
@@ -222,11 +214,8 @@ static void options_timedout_runicast(struct runicast_conn *c, const linkaddr_t 
 */
 static void data_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
 {
-    printf("Root received data on data_conn from %d.%d, seqno %d\n", from->u8[0], from->u8[1], seqno); 
-
   char * data_payload = (char *) packetbuf_dataptr();
-  printf("%s\n", data_payload); //data recvd on the root
-    
+  printf("Root received data %s from %d.%d, seqno %d\n", data_payload, from->u8[0], from->u8[1], seqno);
 
 }
 
@@ -248,6 +237,8 @@ static void uart_serial_callback(unsigned char * c) {
    packetbuf_clear();
    serial_buf[strcspn ( serial_buf, "\n" )] = '\0';
    packetbuf_copyfrom(serial_buf, strlen(serial_buf));
+
+   printf("Received option %s\n", serial_buf);
 
    //Send the option to all the child nodes
    int j;
@@ -291,7 +282,6 @@ PROCESS_THREAD(root_node_process, ev, data)
 
     // Begin process
 	PROCESS_BEGIN();
-	printf("process begun\n");
     	this.addr.u8[0] = linkaddr_node_addr.u8[0];
 	this.addr.u8[1] = linkaddr_node_addr.u8[1];
 	this.dist_root = 0;
