@@ -164,6 +164,7 @@ static void
 routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 {
 
+    printf("Received ROUTING_HELLO from %d.%d\n", from->u8[0], from->u8[1]);
 	// If already connected to root
 	if(parent.addr.u8[0] != 0){
 		if(children_numb < MAX_CHILDREN)
@@ -174,6 +175,7 @@ routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 			sprintf(dist_root, "%d", this.dist_root);
 			packetbuf_copyfrom(dist_root, sizeof(dist_root));
 			runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);  // answer ROUTING_ANS_DIST
+            printf("Replied to %d.%d with ROUTING_ANS_DIST = %u\n", from->u8[0], from->u8[1], (uint8_t) atoi(dist_root));
 		}
 		else 
 		{
@@ -184,8 +186,12 @@ routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 			printf("The node : %d.%d doesn't have place anymore\n", this.addr.u8[0], this.addr.u8[1]);
 			packetbuf_copyfrom(dist_root, sizeof(dist_root));
 			runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);
+            printf("Replied to %d.%d with ROUTING_ANS_DIST = 500\n", from->u8[0], from->u8[1]);
 		}
 	}
+    else {
+        printf("Didn't reply to %d.%d because I am not attached to root yet\n", from->u8[0], from->u8[1]);
+    }
 }
 
 /* UNICAST ROUTING MESSAGES */
