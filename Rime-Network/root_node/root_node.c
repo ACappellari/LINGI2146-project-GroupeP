@@ -97,7 +97,6 @@ static void
 routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 {
 	printf("ROOT: Received ROUTING_HELLO from %d.%d\n", from->u8[0], from->u8[1]);
-	from->u8[0], from->u8[1], (char *)packetbuf_dataptr());
 
 	if(children_numb < MAX_CHILDREN)
 		{
