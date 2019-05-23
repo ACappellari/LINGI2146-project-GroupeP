@@ -16,7 +16,7 @@
 #define ROUTING_NEWCHILD 50
 #define MAX_RETRANSMISSIONS 16
 #define MAX_DISTANCE 300 //a voir si ça fonctionne
-#define MAX_CHILDREN 1
+#define MAX_CHILDREN 500
 #define TOPIC_TEMP 20
 #define TOPIC_ACC 22
 
@@ -54,6 +54,7 @@ data dat;
 // Single-hop reliable connections
 static struct runicast_conn routing_conn;
 static struct runicast_conn data_conn;
+static struct runicast_conn transfer_conn;
 static struct runicast_conn options_conn;
 
 // Best effort local area broadcast connection
@@ -111,20 +112,21 @@ static void send_data(int topic)
     }
     
     runicast_send(&data_conn, &parent.addr, MAX_RETRANSMISSIONS);
+    printf("SENT OWN DATA: Own data sent to %d.%d\n", parent.addr.u8[0], parent.addr.u8[1]);
     packetbuf_clear();
 }
 
 static void transfer_data(char* payload)
 {
-	while(runicast_is_transmitting(&data_conn)){}
+	while(runicast_is_transmitting(&transfer_conn)){}
 	packetbuf_clear();                             
 	int len = strlen(payload);
-	char buffer[len];                              
+	char buffer[len+16];                              
 	snprintf(buffer, sizeof(buffer), "%s", payload);
 	packetbuf_copyfrom(&buffer, strlen(buffer));
-	runicast_send(&data_conn, &parent.addr, MAX_RETRANSMISSIONS);
+	runicast_send(&transfer_conn, &parent.addr, MAX_RETRANSMISSIONS);
 	packetbuf_clear();
-    printf("transfer_data: Data sent to %d.%d\n", parent.addr.u8[0], parent.addr.u8[1]); 
+    printf("TRANSFER DATA: Data transfered to %d.%d\n", parent.addr.u8[0], parent.addr.u8[1]); 
 }
 
 static void transfer_option(char *opt)
@@ -161,34 +163,19 @@ static void send_routing_newchild()
 /* -------------------------- */
 
 // Upon ROUTING_HELLO reception:
-static void
-routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
+static void routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 {
-
     printf("Received ROUTING_HELLO from %d.%d\n", from->u8[0], from->u8[1]);
 	// If already connected to root
 	if(parent.addr.u8[0] != 0){
-		if(children_numb < MAX_CHILDREN)
-		{
-			while(runicast_is_transmitting(&routing_conn)){}
-			packetbuf_clear();
-			char *dist_root;
-			sprintf(dist_root, "%d", this.dist_root);
-			packetbuf_copyfrom(dist_root, sizeof(dist_root));
-			runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);  // answer ROUTING_ANS_DIST
-            printf("Replied to %d.%d with ROUTING_ANS_DIST = %u\n", from->u8[0], from->u8[1], (uint8_t) atoi(dist_root));
-		}
-		else 
-		{
-			while(runicast_is_transmitting(&routing_conn)){}
-			packetbuf_clear();
-			char *dist_root ;
-			sprintf(dist_root, "%d", 500); //unreachable as it doesn't have place for an other child in its children list
-			printf("The node : %d.%d doesn't have space for children anymore\n", this.addr.u8[0], this.addr.u8[1]);
-			packetbuf_copyfrom(dist_root, sizeof(dist_root));
-			runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);
-            printf("Replied to %d.%d with ROUTING_ANS_DIST = 500\n", from->u8[0], from->u8[1]);
-		}
+		while(runicast_is_transmitting(&routing_conn)){}
+		packetbuf_clear();
+		char *dist_root;
+		sprintf(dist_root, "%d", this.dist_root);
+		packetbuf_copyfrom(dist_root, sizeof(dist_root));
+		runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);  // answer ROUTING_ANS_DIST
+        packetbuf_clear();
+        printf("Replied to %d.%d with ROUTING_ANS_DIST = %u\n", from->u8[0], from->u8[1], (uint8_t) atoi(dist_root));
 	}
     else {
         printf("Didn't reply to %d.%d because I am not attached to root yet\n", from->u8[0], from->u8[1]);
@@ -206,20 +193,14 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
     // Upon ROUTING_NEWCHILD reception:
     if(pl == ROUTING_NEWCHILD) {
         printf("Received ROUTING_NEWCHILD from node %d.%d\n", from->u8[0], from->u8[1]);
-        // If children list not full
-        if(children_numb < MAX_CHILDREN){
-			child testChild;
-			testChild.addr.u8[0] = from->u8[0];
-			testChild.addr.u8[1] = from->u8[1];
-			if(check_children(testChild) == 0){        // If children isn't already in children list
-				children[children_numb] = testChild;   // Add the children
-				children_numb++;
-			}
-            printf("Added node %d.%d to my children\n", from->u8[0], from->u8[1]);
+		child testChild;
+		testChild.addr.u8[0] = from->u8[0];
+		testChild.addr.u8[1] = from->u8[1];
+		if(check_children(testChild) == 0){        // If children isn't already in children list
+			children[children_numb] = testChild;   // Add the children
+			children_numb++;
 		}
-		else{
-			printf("Max number of children reached\n");
-		}
+        printf("Added node %d.%d to my children\n", from->u8[0], from->u8[1]);
 
     }
     // Upon ROUTING_ANS_DIST reception:
@@ -240,6 +221,7 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
 	        parent.dist_root = dist_root;
 	        this.dist_root = dist_root + 1;
             printf("Node %d.%d is closer to root than my current parent: replace it and send him ROUTING_NEWCHILD\n", from->u8[0], from->u8[1]);
+            printf("My new parent is %d.%d\n", parent.addr.u8[0], parent.addr.u8[1]);
             send_routing_newchild(); // Warn him by sending ROUTING_NEWCHILD
         }
         else {
@@ -355,8 +337,6 @@ static void options_timedout_runicast(struct runicast_conn *c, const linkaddr_t 
 */
 static void data_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
 {
-    
-    
     /* Copy the data from the packetbuf */
     char * data_payload = (char *) packetbuf_dataptr();
     printf("Received data = %s from %d.%d, seqno %d\n", data_payload, from->u8[0], from->u8[1], seqno);
@@ -400,6 +380,7 @@ static void data_timedout_runicast(struct runicast_conn *c, const linkaddr_t *to
 static const struct broadcast_callbacks broadcast_callbacks = {routing_recv_broadcast};
 static const struct runicast_callbacks routing_runicast_callbacks = {routing_recv_runicast, routing_sent_runicast, routing_timedout_runicast};
 static const struct runicast_callbacks data_runicast_callbacks = {data_recv_runicast, data_sent_runicast, data_timedout_runicast};
+static const struct runicast_callbacks transfer_runicast_callbacks = {data_recv_runicast, data_sent_runicast, data_timedout_runicast};
 static const struct runicast_callbacks options_runicast_callbacks = {options_recv_runicast, options_sent_runicast, options_timedout_runicast};
 
 /*---------------------------------------------------------------------------*/
@@ -414,6 +395,7 @@ PROCESS_THREAD(sensor_node_process, ev, data)
 	PROCESS_EXITHANDLER(runicast_close(&routing_conn);)
 	PROCESS_EXITHANDLER(runicast_close(&data_conn);)
 	PROCESS_EXITHANDLER(runicast_close(&options_conn);)
+    PROCESS_EXITHANDLER(runicast_close(&transfer_conn);)
 
     // Begin process
 	PROCESS_BEGIN();
@@ -437,10 +419,11 @@ PROCESS_THREAD(sensor_node_process, ev, data)
     dat.acc=-555;
 
     // Open channels
-	runicast_open(&routing_conn, 144, &routing_runicast_callbacks);                 // Unicast routing channel
-	runicast_open(&data_conn, 154, &data_runicast_callbacks);                       // Data channel
-	runicast_open(&options_conn, 164, &options_runicast_callbacks);                 // Options channel
-	broadcast_open(&broadcast_conn, 129, &broadcast_callbacks);                     // Broadcast routing channel
+	runicast_open(&routing_conn, 144, &routing_runicast_callbacks);               // Unicast routing channel
+	runicast_open(&data_conn, 154, &data_runicast_callbacks);                     // Data channel
+	runicast_open(&options_conn, 164, &options_runicast_callbacks);               // Options channel
+	broadcast_open(&broadcast_conn, 129, &broadcast_callbacks);                   // Broadcast routing channel
+    runicast_open(&transfer_conn, 174, &transfer_runicast_callbacks);             // Broadcast routing channel
 
     // Timers
     static struct etimer HELLO_timer;
@@ -450,16 +433,21 @@ PROCESS_THREAD(sensor_node_process, ev, data)
     // Send ROUTING_HELLO to all node within reach, at random HELLO_timer intervals
     HELLO: while((parent.addr.u8[0] == 0) && (parent.addr.u8[1] == 0)) {
         // Delay between two HELLO send
-        etimer_set(&HELLO_timer, CLOCK_SECOND * 8 + random_rand() % (CLOCK_SECOND * 16));
+        etimer_set(&HELLO_timer, 3000);
 		PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&HELLO_timer));
-
-        broadcast_send(&broadcast_conn);
+        if(parent.addr.u8[0] == 0){
+            broadcast_send(&broadcast_conn);
+        }
+        else {
+            break;
+        }
 	    printf("Broadcast ROUTING_HELLO\n");
     }
 
 	printf("Attached to parent %d.%d\n", parent.addr.u8[0], parent.addr.u8[1]);
     
     while(parent.addr.u8[0] != 0) {
+        printf("My current parent is %d.%d\n", parent.addr.u8[0], parent.addr.u8[1]);
         etimer_set(&DATA_timer, CLOCK_SECOND * 2 + random_rand() % (CLOCK_SECOND * 8));
         etimer_set(&et, 3000);
         PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&DATA_timer));
@@ -476,9 +464,18 @@ PROCESS_THREAD(sensor_node_process, ev, data)
             printf("Acquired ACC data: %u\n", dat.acc);
             dat.temp = (uint16_t) rand(); //tmp102_read_temp_simple();
             printf("Acquired TEMP data: %u\n", dat.temp);
-            send_data(TOPIC_TEMP);
+
+            if(parent.addr.u8[0]!=0) {
+                send_data(TOPIC_TEMP);
+            }
+            else { break; }
             PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&et));
-            send_data(TOPIC_ACC);
+            if(parent.addr.u8[0]!=0){
+                send_data(TOPIC_ACC);
+            }
+            else {
+                break;
+            }
         }
     
         // Send data if change

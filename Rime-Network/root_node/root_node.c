@@ -16,7 +16,7 @@
 #define ROUTING_NEWCHILD  50
 #define MAX_RETRANSMISSIONS 16
 #define SERIAL_BUF_SIZE 128 //Size of the communication buffer with the gateway
-#define MAX_CHILDREN 1
+#define MAX_CHILDREN 500
 
 /* STRUCTURES */
 /* ---------- */
@@ -52,6 +52,7 @@ static uint8_t children_numb = 0;
 static struct runicast_conn routing_conn;
 static struct runicast_conn data_conn;
 static struct runicast_conn options_conn;
+static struct runicast_conn transfer_conn;
 
 // Best effort local area broadcast connection
 static struct broadcast_conn broadcast_conn;
@@ -98,14 +99,14 @@ routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 {
 	printf("ROOT: Received ROUTING_HELLO from %d.%d\n", from->u8[0], from->u8[1]);
 
-	if(children_numb < MAX_CHILDREN)
-	{
+	//children_numb < MAX_CHILDREN
 		while(runicast_is_transmitting(&routing_conn)){}
 		packetbuf_clear();
 		packetbuf_copyfrom("0", 1);
 		runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);  // answer ROUTING_ANS_DIST
-           printf("Replied to %d.%d with ROUTING_ANS_DIST = 0\n", from->u8[0], from->u8[1]);
-	}
+        printf("Replied to %d.%d with ROUTING_ANS_DIST = 0\n", from->u8[0], from->u8[1]);
+	//}
+    /*
 	else 
 	{
 		while(runicast_is_transmitting(&routing_conn)){}
@@ -117,6 +118,7 @@ routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 		runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);
         printf("Replied to %d.%d with ROUTING_ANS_DIST = 500\n", from->u8[0], from->u8[1]);
 	}
+    */
 
 }
 
@@ -132,7 +134,7 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
     if(pl == ROUTING_NEWCHILD) {
         printf("Received ROUTING_NEWCHILD from node %d.%d\n", from->u8[0], from->u8[1]);
         // If children list not full
-        if(children_numb < MAX_CHILDREN){
+        //if(children_numb < MAX_CHILDREN){
 			child testChild;
 			testChild.addr.u8[0] = from->u8[0];
 			testChild.addr.u8[1] = from->u8[1];
@@ -141,10 +143,12 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
 				children_numb++;
 			}
             printf("Added node %d.%d to my children\n", from->u8[0], from->u8[1]);
-		}
+		//}
+        /*
 		else{
 			printf("Max number of children reached\n");
 		}
+        */
 
     }
     // Upon ROUTING_ANS_DIST reception:
@@ -249,8 +253,8 @@ static void uart_serial_callback(unsigned char * c) {
 	serial_buf[serial_buf_index] = c;   	
   }  
   if(c == '\n' || c == EOF || c == '\0'){ 
-   //printf("%s\n", (char *)serial_buf);
-   packetbuf_clear();
+      //printf("%s\n", (char *)serial_buf);
+    packetbuf_clear();
    serial_buf[strcspn ( serial_buf, "\n" )] = '\0';
    packetbuf_copyfrom(serial_buf, strlen(serial_buf));
 
@@ -269,6 +273,18 @@ static void uart_serial_callback(unsigned char * c) {
   } 
 }
 
+static void data_sent_runicast(){
+
+}
+
+static void data_timedout_runicast(){
+
+}
+
+static void options_recv_runicast(){
+
+}
+
 /* CALLBACKS SETTINGS */
 /* ------------------ */
 // runicast_callbacks structures contain the function to execute when:
@@ -278,8 +294,9 @@ static void uart_serial_callback(unsigned char * c) {
 
 static const struct broadcast_callbacks broadcast_callbacks = {routing_recv_broadcast};
 static const struct runicast_callbacks routing_runicast_callbacks = {routing_recv_runicast, routing_sent_runicast, routing_timedout_runicast};
-static const struct runicast_callbacks data_runicast_callbacks = {data_recv_runicast};
-static const struct runicast_callbacks options_runicast_callbacks = {options_sent_runicast, options_timedout_runicast};
+static const struct runicast_callbacks data_runicast_callbacks = {data_recv_runicast, data_sent_runicast, data_timedout_runicast};
+static const struct runicast_callbacks transfer_runicast_callbacks = {data_recv_runicast, data_sent_runicast, data_timedout_runicast};
+static const struct runicast_callbacks options_runicast_callbacks = {options_recv_runicast, options_sent_runicast, options_timedout_runicast};
 
 /*---------------------------------------------------------------------------*/
 PROCESS(root_node_process, "Root node implementation");
@@ -295,10 +312,11 @@ PROCESS_THREAD(root_node_process, ev, data)
 	PROCESS_EXITHANDLER(runicast_close(&routing_conn);)
 	PROCESS_EXITHANDLER(runicast_close(&data_conn);)
 	PROCESS_EXITHANDLER(runicast_close(&options_conn);)
+    PROCESS_EXITHANDLER(runicast_close(&transfer_conn);)
 
     // Begin process
 	PROCESS_BEGIN();
-    	this.addr.u8[0] = linkaddr_node_addr.u8[0];
+    this.addr.u8[0] = linkaddr_node_addr.u8[0];
 	this.addr.u8[1] = linkaddr_node_addr.u8[1];
 	this.dist_root = 0;
 
@@ -307,6 +325,7 @@ PROCESS_THREAD(root_node_process, ev, data)
     runicast_open(&data_conn, 154, &data_runicast_callbacks);
     runicast_open(&options_conn, 164, &options_runicast_callbacks);
     broadcast_open(&broadcast_conn, 129, &broadcast_callbacks);
+    runicast_open(&transfer_conn, 174, &transfer_runicast_callbacks);              // Broadcast routing channel
 
     uart0_init(BAUD2UBR(115200)); //set the baud rate as necessary 
   	uart0_set_input(&uart_serial_callback); //set the callback function for serial input
