@@ -163,23 +163,30 @@ static void send_routing_newchild()
 static void
 routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 {
-    printf("Received ROUTING_HELLO from %d.%d\n", from->u8[0], from->u8[1]);
 
 	// If already connected to root
 	if(parent.addr.u8[0] != 0){
-		while(runicast_is_transmitting(&routing_conn)){}
-		packetbuf_clear();
-		char *dist_root;
-		sprintf(dist_root, "%d", this.dist_root);
-		packetbuf_copyfrom(dist_root, sizeof(dist_root));
-		runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);  // answer ROUTING_ANS_DIST
-        printf("Replied to %d.%d with ROUTING_ANS_DIST = %u\n", from->u8[0], from->u8[1], (uint8_t) atoi(dist_root));
+		if(children_numb < MAX_CHILDREN)
+		{
+			while(runicast_is_transmitting(&routing_conn)){}
+			packetbuf_clear();
+			char *dist_root;
+			sprintf(dist_root, "%d", this.dist_root);
+			packetbuf_copyfrom(dist_root, sizeof(dist_root));
+			runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);  // answer ROUTING_ANS_DIST
+		}
+		else 
+		{
+			while(runicast_is_transmitting(&routing_conn)){}
+			packetbuf_clear();
+			char *dist_root ;
+			sprintf(dist_root, "%d", 500); //unreachable as it doesn't have place for an other child in its children list
+			printf("The node : %d.%d doesn't have place anymore\n", this.addr.u8[0], this.addr.u8[1]);
+			packetbuf_copyfrom(dist_root, sizeof(dist_root));
+			runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);
+		}
 	}
-    else {
-        printf("Didn't reply to %d.%d because I am not attached to root yet\n", from->u8[0], from->u8[1]);
-    }
 }
-
 
 /* UNICAST ROUTING MESSAGES */
 /* ------------------------ */

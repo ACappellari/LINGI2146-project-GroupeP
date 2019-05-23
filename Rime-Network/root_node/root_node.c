@@ -96,11 +96,26 @@ void delete_child(int index)
 static void
 routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 {
-	printf("ROOT: Received ROUTING_HELLO from %d.%d\n", from->u8[0], from->u8[1]);
+	printf("I A M ROOT, broadcast message received from %d.%d: '%s'\n",
+	from->u8[0], from->u8[1], (char *)packetbuf_dataptr());
 
-	packetbuf_copyfrom("0", 1);
-	runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);
-    printf("Replied to %d.%d with ROUTING_ANS_DIST = 0\n", from->u8[0], from->u8[1]);
+	if(children_numb < MAX_CHILDREN)
+		{
+			while(runicast_is_transmitting(&routing_conn)){}
+			packetbuf_clear();
+			packetbuf_copyfrom("0", 1);
+			runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);  // answer ROUTING_ANS_DIST
+		}
+		else 
+		{
+			while(runicast_is_transmitting(&routing_conn)){}
+			packetbuf_clear();
+			char *dist_root ;
+			sprintf(dist_root, "%d", 500); //unreachable as it doesn't have place for an other child in its children list
+			printf("ROOT doesn't have place anymore\n");
+			packetbuf_copyfrom(dist_root, sizeof(dist_root));
+			runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);
+		}
 
 }
 
