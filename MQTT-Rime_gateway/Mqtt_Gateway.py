@@ -1,6 +1,7 @@
 import paho.mqtt.client as mqtt
 import serial
 import re
+import time
 
 # HELPER FUNCTIONS AND GLOBAL VARIABLES
 # -------------------------------------
@@ -8,10 +9,12 @@ import re
 last_opt = 0
 
 # CONNACK callback
-def connect_callback(client, userdata, flags, rc):
+def on_connect(client, userdata, flags, rc):
    if rc==0:
        client.connected_flag = True
        print("Gateway connected to broker\n")
+   else:
+	print("Bad connection return code=",rc)
 
 # PUBLISH callback
 def publish_callback(client, userdata, result):
@@ -19,7 +22,7 @@ def publish_callback(client, userdata, result):
 
 # Callback upon broker message reception (number of connected clients)
 def message_callback(client, userdata, message):
-    printf("Number of clients received\n")
+    print("Number of clients received\n")
     if message.payload==1:  # If only one connected client (ourself): no more subscriber connected
         opt=0
         ser.write(0)
@@ -42,7 +45,7 @@ def getData(line):
 # ------------------------------------
 ser = serial.Serial()
 ser.baudrate = 115200
-ser.port = 6100
+ser.port = '/dev/pts/25'
 ser.open()
 
 # CONNECTION TO BROKER
@@ -52,10 +55,16 @@ gateway = mqtt.Client("gateway")
 mqtt.Client.connected_flag = False
 
 # Connect to broker
-broker = "192.168.1.184"
-gateway.connect(broker)
-gateway.on_connect = connect_callback
+gateway.connect("127.0.0.1",1884)
+gateway.on_connect = on_connect
+
+while not gateway.connected_flag:
+	print("In wait loop\n")
+	time.sleep(1)
+print("In main loop\n")
+
 gateway.on_publish = publish_callback
+gateway.on_message = message_callback
 gateway.subscribe("$SYS/broker/clients/connected")
 
 # Loop
@@ -65,7 +74,7 @@ while(gateway.connected_flag):
     [topic, value] = getData(line)
     if topic=="TMP":
         gateway.publish(topic,value)
-    else if topic=="ACC":
+    elif topic=="ACC":
         gateway.publish(topic,value)
     else:
         print("Unknown topic\n")
@@ -73,4 +82,5 @@ while(gateway.connected_flag):
 gateway.loop_stop()
 gateway.disconnect()
 
+ser.write("0\n")
 ser.close()

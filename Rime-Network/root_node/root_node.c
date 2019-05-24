@@ -26,12 +26,6 @@ typedef struct sensor_node{
 	uint8_t dist_root;    // Number of hops from root
 } node;
 
-struct sensor_data;
-typedef struct sensor_data{
-	uint16_t val;
-	char* type;         // Temperature or accelerometer data
-} data;
-
 struct child_node;
 typedef struct child_node{
 	linkaddr_t addr;
@@ -42,8 +36,6 @@ typedef struct child_node{
 node this;
 child children[MAX_CHILDREN];
 static uint8_t children_numb = 0;
-
-
 
 /* CONNECTIONS */
 /* ----------- */
@@ -99,26 +91,11 @@ routing_recv_broadcast(struct broadcast_conn *c, const linkaddr_t *from)
 {
 	printf("ROOT: Received ROUTING_HELLO from %d.%d\n", from->u8[0], from->u8[1]);
 
-	//children_numb < MAX_CHILDREN
-		while(runicast_is_transmitting(&routing_conn)){}
-		packetbuf_clear();
-		packetbuf_copyfrom("0", 1);
-		runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);  // answer ROUTING_ANS_DIST
-        printf("Replied to %d.%d with ROUTING_ANS_DIST = 0\n", from->u8[0], from->u8[1]);
-	//}
-    /*
-	else 
-	{
-		while(runicast_is_transmitting(&routing_conn)){}
-		packetbuf_clear();
-		char *dist_root ;
-		sprintf(dist_root, "%d", 500); //unreachable as it doesn't have space for an other child in its children list
-		printf("ROOT doesn't have space for new children anymore\n");
-		packetbuf_copyfrom(dist_root, sizeof(dist_root));
-		runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);
-        printf("Replied to %d.%d with ROUTING_ANS_DIST = 500\n", from->u8[0], from->u8[1]);
-	}
-    */
+	while(runicast_is_transmitting(&routing_conn)){}
+	packetbuf_clear();
+	packetbuf_copyfrom("0", 1);
+	runicast_send(&routing_conn, from, MAX_RETRANSMISSIONS);  // answer ROUTING_ANS_DIST
+    printf("Replied to %d.%d with ROUTING_ANS_DIST = 0\n", from->u8[0], from->u8[1]);
 
 }
 
@@ -133,22 +110,16 @@ routing_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t s
     // Upon ROUTING_NEWCHILD reception:
     if(pl == ROUTING_NEWCHILD) {
         printf("Received ROUTING_NEWCHILD from node %d.%d\n", from->u8[0], from->u8[1]);
+        
         // If children list not full
-        //if(children_numb < MAX_CHILDREN){
-			child testChild;
-			testChild.addr.u8[0] = from->u8[0];
-			testChild.addr.u8[1] = from->u8[1];
-			if(check_children(testChild) == 0){        // If children isn't already in children list
-				children[children_numb] = testChild;   // Add the children
-				children_numb++;
-			}
-            printf("Added node %d.%d to my children\n", from->u8[0], from->u8[1]);
-		//}
-        /*
-		else{
-			printf("Max number of children reached\n");
+		child testChild;
+		testChild.addr.u8[0] = from->u8[0];
+		testChild.addr.u8[1] = from->u8[1];
+		if(check_children(testChild) == 0){        // If children isn't already in children list
+			children[children_numb] = testChild;   // Add the children
+			children_numb++;
 		}
-        */
+        printf("Added node %d.%d to my children\n", from->u8[0], from->u8[1]);
 
     }
     // Upon ROUTING_ANS_DIST reception:
@@ -171,7 +142,6 @@ routing_timedout_runicast(struct runicast_conn *c, const linkaddr_t *to, uint8_t
 	testChild.addr.u8[0] = to->u8[0];
 	testChild.addr.u8[1] = to->u8[1];
 	int isChild = check_children(testChild);    // Is the lost node a children?
-
 
 	//If the node lost is a child node: 
 	if(isChild > 0){
@@ -235,8 +205,7 @@ static void options_timedout_runicast(struct runicast_conn *c, const linkaddr_t 
 static void data_recv_runicast(struct runicast_conn *c, const linkaddr_t *from, uint8_t seqno)
 {
   char * data_payload = (char *) packetbuf_dataptr();
-  printf("Root received data %s from %d.%d, seqno %d\n", data_payload, from->u8[0], from->u8[1], seqno);
-
+  printf("#%s\n",data_payload);
 }
 
 /* SERIAL COMMUNICATION */

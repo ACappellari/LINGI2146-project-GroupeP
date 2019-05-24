@@ -15,7 +15,7 @@
 /* --------- */
 #define ROUTING_NEWCHILD 50
 #define MAX_RETRANSMISSIONS 16
-#define MAX_DISTANCE 300 //a voir si ça fonctionne
+#define MAX_DISTANCE 300
 #define MAX_CHILDREN 500
 #define TOPIC_TEMP 20
 #define TOPIC_ACC 22
@@ -30,8 +30,8 @@ typedef struct sensor_node{
 
 struct sensor_data;
 typedef struct sensor_data{
-	uint16_t acc;
-    uint16_t temp;
+	int acc;
+    int temp;
 } data;
 
 struct child_node;
@@ -99,13 +99,13 @@ static void send_data(int topic)
     packetbuf_clear();
 
     if(topic==20) {
-        char *top = "TOPIC_TEMP";
+        char *top = "TMP";
         char buffer[strlen(top)+16];
         snprintf(buffer, sizeof(buffer), "%s %d", top, dat.temp);
         packetbuf_copyfrom(&buffer, strlen(buffer));
     }
     else if(topic==22){
-        char *top = "TOPIC_ACC";
+        char *top = "ACC";
         char buffer[strlen(top)+16];
         snprintf(buffer, sizeof(buffer), "%s %d", top, dat.acc);
         packetbuf_copyfrom(&buffer, strlen(buffer));
@@ -156,8 +156,6 @@ static void send_routing_newchild()
 	packetbuf_clear();
 
 }
-
-
 
 /* BROADCAST ROUTING MESSAGES */
 /* -------------------------- */
@@ -460,9 +458,9 @@ PROCESS_THREAD(sensor_node_process, ev, data)
     
         // Send data periodically
         else if (option==1){
-            dat.acc = (uint16_t) rand(); //accm_read_axis(0);
+            dat.acc = rand();   //accm_read_axis(0);
             printf("Acquired ACC data: %u\n", dat.acc);
-            dat.temp = (uint16_t) rand(); //tmp102_read_temp_simple();
+            dat.temp = rand();  //tmp102_read_temp_simple();
             printf("Acquired TEMP data: %u\n", dat.temp);
 
             if(parent.addr.u8[0]!=0) {
@@ -480,9 +478,9 @@ PROCESS_THREAD(sensor_node_process, ev, data)
     
         // Send data if change
         else if (option==2){
-            uint16_t acc = (uint16_t) rand();   //accm_read_axis(0);
+            int acc = rand();       //accm_read_axis(0);
             printf("Acquired ACC data: %u\n", dat.acc);
-            uint8_t temp = (uint16_t) rand();    //tmp102_read_temp_simple();
+            int temp = rand();      //tmp102_read_temp_simple();
             printf("Acquired TEMP data: %u\n", dat.temp);
 
             if (dat.acc!=acc){
