@@ -54,7 +54,6 @@ data dat;
 // Single-hop reliable connections
 static struct runicast_conn routing_conn;
 static struct runicast_conn data_conn;
-static struct runicast_conn transfer_conn;
 static struct runicast_conn options_conn;
 
 // Best effort local area broadcast connection
@@ -118,13 +117,13 @@ static void send_data(int topic)
 
 static void transfer_data(char* payload)
 {
-	while(runicast_is_transmitting(&transfer_conn)){}
+	while(runicast_is_transmitting(&data_conn)){}
 	packetbuf_clear();                             
 	int len = strlen(payload);
 	char buffer[len+16];                              
 	snprintf(buffer, sizeof(buffer), "%s", payload);
 	packetbuf_copyfrom(&buffer, strlen(buffer));
-	runicast_send(&transfer_conn, &parent.addr, MAX_RETRANSMISSIONS);
+	runicast_send(&data_conn, &parent.addr, MAX_RETRANSMISSIONS);
 	packetbuf_clear();
     printf("TRANSFER DATA: Data transfered to %d.%d\n", parent.addr.u8[0], parent.addr.u8[1]); 
 }
@@ -378,7 +377,6 @@ static void data_timedout_runicast(struct runicast_conn *c, const linkaddr_t *to
 static const struct broadcast_callbacks broadcast_callbacks = {routing_recv_broadcast};
 static const struct runicast_callbacks routing_runicast_callbacks = {routing_recv_runicast, routing_sent_runicast, routing_timedout_runicast};
 static const struct runicast_callbacks data_runicast_callbacks = {data_recv_runicast, data_sent_runicast, data_timedout_runicast};
-static const struct runicast_callbacks transfer_runicast_callbacks = {data_recv_runicast, data_sent_runicast, data_timedout_runicast};
 static const struct runicast_callbacks options_runicast_callbacks = {options_recv_runicast, options_sent_runicast, options_timedout_runicast};
 
 /*---------------------------------------------------------------------------*/
@@ -393,7 +391,6 @@ PROCESS_THREAD(sensor_node_process, ev, data)
 	PROCESS_EXITHANDLER(runicast_close(&routing_conn);)
 	PROCESS_EXITHANDLER(runicast_close(&data_conn);)
 	PROCESS_EXITHANDLER(runicast_close(&options_conn);)
-    PROCESS_EXITHANDLER(runicast_close(&transfer_conn);)
 
     // Begin process
 	PROCESS_BEGIN();
@@ -421,7 +418,6 @@ PROCESS_THREAD(sensor_node_process, ev, data)
 	runicast_open(&data_conn, 154, &data_runicast_callbacks);                     // Data channel
 	runicast_open(&options_conn, 164, &options_runicast_callbacks);               // Options channel
 	broadcast_open(&broadcast_conn, 129, &broadcast_callbacks);                   // Broadcast routing channel
-    runicast_open(&transfer_conn, 174, &transfer_runicast_callbacks);             // Broadcast routing channel
 
     // Timers
     static struct etimer HELLO_timer;
